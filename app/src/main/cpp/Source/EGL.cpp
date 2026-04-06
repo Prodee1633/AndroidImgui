@@ -253,6 +253,7 @@ void EGL::EglThread() {
     static float fontScale = 1.0f;
     static float bgAlpha = 0.9f;
     static ImVec4 themeColor = ImVec4(0.35f, 0.55f, 0.85f, 1.0f);
+    static float globalRounding = 10.0f; // 全局圆角控制
     static ImVec2 windowSize(1000, 700);
     static ImVec2 windowPos(100, 100);
 
@@ -301,6 +302,7 @@ void EGL::EglThread() {
     sliderDisplayValue[3] = speedValue;
     sliderDisplayValue[4] = fontScale;
     sliderDisplayValue[5] = bgAlpha;
+    sliderDisplayValue[6] = globalRounding;
 
     while (true) {
         if (this->isDestroy) {
@@ -324,11 +326,11 @@ void EGL::EglThread() {
         io->FontGlobalScale = fontScale;
         ImGui::SetNextWindowBgAlpha(bgAlpha);
 
-        // 样式设置
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 20.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 15.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 10.0f);
+        // 样式设置 - 使用全局圆角
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, globalRounding * 2.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, globalRounding * 1.5f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, globalRounding);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, globalRounding);
         // 最外层菜单滚动条保留，子面板隐藏滚动条
         ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 12.0f);
         // 按钮文本居中
@@ -428,18 +430,21 @@ void EGL::EglThread() {
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 themeColorU32 = ImGui::ColorConvertFloat4ToU32(themeColor);
+        
+        // 先计算导航栏的基准Y位置
+        float navBaseY = ImGui::GetCursorScreenPos().y;
 
         for (int i = 0; i < tabCount; i++) {
             if (i > 0) ImGui::SameLine(0, 5);
             
-            // 计算动画值
+            // 计算动画值 - 只有文字透明度变化，位置不变
             float opacity = Lerp(0.6f, 1.0f, tabAnimProgress[i]);
-            float offsetY = Lerp(0.0f, -7.0f, tabAnimProgress[i]); // 向上移动7px
             
             // 悬浮动画 - 使用hovered状态
             static float hoverProgress[5] = {0};
-            bool isHovered = ImGui::IsMouseHoveringRect(ImGui::GetCursorScreenPos(), 
-                ImVec2(ImGui::GetCursorScreenPos().x + tabWidth, ImGui::GetCursorScreenPos().y + tabHeight));
+            ImVec2 cursorBefore = ImGui::GetCursorScreenPos();
+            bool isHovered = ImGui::IsMouseHoveringRect(cursorBefore, 
+                ImVec2(cursorBefore.x + tabWidth, cursorBefore.y + tabHeight));
             float hoverTarget = isHovered ? 1.0f : 0.0f;
             if (hoverProgress[i] < hoverTarget) {
                 hoverProgress[i] += 0.1f;
@@ -456,10 +461,7 @@ void EGL::EglThread() {
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(themeColor.x, themeColor.y, themeColor.z, 0.4f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
             
-            ImVec2 buttonPos = ImGui::GetCursorPos();
-            buttonPos.y += offsetY;
-            ImGui::SetCursorPos(buttonPos);
-            
+            // 按钮位置固定，不随选中状态改变
             if (ImGui::Button(tabs[i], ImVec2(tabWidth, tabHeight))) {
                 selectedTab = i;
                 selectedModule = -1;
@@ -467,15 +469,14 @@ void EGL::EglThread() {
             
             ImGui::PopStyleColor(4);
             
-            // 绘制底部指示器 - 固定在底部，不随文字移动
+            // 绘制底部指示器 - 固定在导航栏底部
             if (indicatorAnimProgress[i] > 0.0f) {
                 ImVec2 screenPos = ImGui::GetItemRectMin();
-                ImVec2 screenMax = ImGui::GetItemRectMax();
                 float indicatorWidth = tabWidth * 0.6f;
                 float indicatorHeight = 5.0f;
                 float indicatorX = screenPos.x + (tabWidth - indicatorWidth) * 0.5f;
-                // 指示器固定在按钮底部，不随文字上移
-                float indicatorY = winPos.y + 40.0f + tabHeight - indicatorHeight - 2.0f;
+                // 指示器固定在导航栏底部（相对于窗口内容区域）
+                float indicatorY = navBaseY + tabHeight - indicatorHeight - 2.0f;
                 
                 ImU32 indicatorColor = IM_COL32(
                     (int)(themeColor.x * 255),
@@ -737,13 +738,6 @@ void EGL::EglThread() {
             if (AnimatedToggle("##interface_enabled", &interfaceEnabled, 60, 32, toggleAnimProgress[4])) {}
             ImGui::Spacing();
 
-            ImGui::Text("Font Scale");
-            ImGui::SameLine(contentAvailWidth - 50);
-            UpdateSliderAnim(4, fontScale);
-            ImGui::Text("%.2f", sliderDisplayValue[4]);
-            AnimatedSliderFloat("##font_scale", &fontScale, 0.5f, 2.0f, 4.0f, 30.0f, sliderDisplayValue[4]);
-            ImGui::Spacing();
-
             ImGui::Text("Background Alpha");
             ImGui::SameLine(contentAvailWidth - 50);
             UpdateSliderAnim(5, bgAlpha);
@@ -754,6 +748,13 @@ void EGL::EglThread() {
             ImGui::Text("Theme Color");
             ImGui::SameLine(contentAvailWidth - 100);
             ImGui::ColorEdit3("##theme_color", (float*)&themeColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+            ImGui::Spacing();
+            
+            ImGui::Text("Global Rounding");
+            ImGui::SameLine(contentAvailWidth - 50);
+            UpdateSliderAnim(6, globalRounding);
+            ImGui::Text("%.0f", sliderDisplayValue[6]);
+            AnimatedSliderFloat("##global_rounding", &globalRounding, 0.0f, 20.0f, 4.0f, 30.0f, sliderDisplayValue[6]);
         }
         else {
             ImVec2 avail = ImGui::GetContentRegionAvail();
