@@ -454,11 +454,11 @@ void EGL::EglThread() {
         ImGui::Spacing();
         ImGui::Spacing();
 
-        // 左侧面板 - 启用滚动支持鼠标滚轮
+        // 左侧面板 - 禁用鼠标滚轮
         io->FontGlobalScale = 1.0f;
         
         ImGui::SetCursorPosX(5.0f);
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false);
+        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
         
         float leftButtonWidth = leftPanelWidth - 30.0f;
         float moduleButtonHeight = 40.0f;
@@ -561,8 +561,8 @@ void EGL::EglThread() {
 
         ImGui::SameLine();
         
-        // 绘制竖直分隔线
-        float separatorX = ImGui::GetCursorScreenPos().x;
+        // 绘制竖直分隔线 - 往左移
+        float separatorX = ImGui::GetCursorScreenPos().x - 15.0f;
         float separatorY = ImGui::GetCursorScreenPos().y;
         drawList->AddLine(
             ImVec2(separatorX, separatorY),
@@ -571,10 +571,10 @@ void EGL::EglThread() {
             2.0f
         );
 
-        // 右侧面板 - 启用滚动支持鼠标滚轮
+        // 右侧面板 - 滚动条20px，禁用鼠标滚轮
         io->FontGlobalScale = fontScale;
-        
-        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 20.0f);
+        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
         
         ImU32 fadeColor = IM_COL32(255, 255, 255, (int)(255 * contentFadeProgress));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, contentFadeProgress));
@@ -630,11 +630,21 @@ void EGL::EglThread() {
             ImGui::Spacing();
 
             ImGui::Text("Targets:");
-            ImGui::Checkbox("Players", &killAuraTargetPlayers);
-            ImGui::SameLine(140);
-            ImGui::Checkbox("Mobs", &killAuraTargetMobs);
-            ImGui::SameLine(260);
-            ImGui::Checkbox("Animals", &killAuraTargetAnimals);
+            ImGui::Spacing();
+            
+            ImGui::Text("Players");
+            ImGui::SameLine(contentAvailWidth - 70);
+            if (AnimatedToggle("##ka_target_players", &killAuraTargetPlayers, 60, 32, toggleAnimProgress[5])) {}
+            ImGui::Spacing();
+            
+            ImGui::Text("Mobs");
+            ImGui::SameLine(contentAvailWidth - 70);
+            if (AnimatedToggle("##ka_target_mobs", &killAuraTargetMobs, 60, 32, toggleAnimProgress[6])) {}
+            ImGui::Spacing();
+            
+            ImGui::Text("Animals");
+            ImGui::SameLine(contentAvailWidth - 70);
+            if (AnimatedToggle("##ka_target_animals", &killAuraTargetAnimals, 60, 32, toggleAnimProgress[7])) {}
         }
         else if (selectedTab == 1 && selectedModule == 0) {
             ImGui::Text("Speed");
@@ -707,6 +717,7 @@ void EGL::EglThread() {
         ImGui::PopStyleColor();
 
         ImGui::EndChild();
+        ImGui::PopStyleVar(); // Pop scrollbar size
 
         ImGui::End();
 
