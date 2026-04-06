@@ -14,14 +14,8 @@ EGL::EGL() {
 
 static bool RunInitImgui;
 
-// 动画插值函数
 float Lerp(float a, float b, float t) {
     return a + (b - a) * t;
-}
-
-float SmoothStep(float edge0, float edge1, float x) {
-    float t = ImClamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
 }
 
 int EGL::initEgl() {
@@ -119,7 +113,6 @@ void EGL::onSurfaceDestroy() {
     SurfaceThread = nullptr;
 }
 
-// 带动画的苹果风格开关 - 支持双向动画
 bool AnimatedToggle(const char* label, bool* v, float width, float height, float& animProgress) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return false;
@@ -143,7 +136,6 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
 
     ImVec4 themeColor = style.Colors[ImGuiCol_Button];
     
-    // 更新动画进度 - 双向动画
     float targetProgress = *v ? 1.0f : 0.0f;
     float animSpeed = 0.15f;
     if (animProgress < targetProgress) {
@@ -154,7 +146,6 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
         if (animProgress < targetProgress) animProgress = targetProgress;
     }
     
-    // 动画颜色插值
     ImU32 bgColor = IM_COL32(
         (int)(100 + (int)(themeColor.x * 255 - 100) * animProgress),
         (int)(100 + (int)(themeColor.y * 255 - 100) * animProgress),
@@ -170,7 +161,6 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
     drawList->AddRectFilled(visualBb.Min, visualBb.Max, bgColor, rounding);
     
     float knobRadius = height * 0.38f;
-    // 动画插值开关位置 - 双向
     float knobStartX = visualBb.Min.x + knobRadius + 3;
     float knobEndX = visualBb.Max.x - knobRadius - 3;
     float knobX = Lerp(knobStartX, knobEndX, animProgress);
@@ -182,7 +172,6 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
     return pressed;
 }
 
-// 带动画的细线滑块
 bool AnimatedSliderFloat(const char* label, float* v, float v_min, float v_max, float lineHeight, float touchHeight, float displayValue) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return false;
@@ -222,7 +211,6 @@ bool AnimatedSliderFloat(const char* label, float* v, float v_min, float v_max, 
     
     drawList->AddRectFilled(visualBb.Min, visualBb.Max, bgColor, rounding);
     
-    // 使用displayValue进行平滑动画显示
     float fillT = (displayValue - v_min) / (v_max - v_min);
     fillT = ImClamp(fillT, 0.0f, 1.0f);
     float fillWidth = visualBb.GetWidth() * fillT;
@@ -253,29 +241,26 @@ void EGL::EglThread() {
     static float fontScale = 1.0f;
     static float bgAlpha = 0.9f;
     static ImVec4 themeColor = ImVec4(0.35f, 0.55f, 0.85f, 1.0f);
-    static float globalRounding = 10.0f; // 全局圆角控制
+    static float globalRounding = 10.0f;
     static ImVec2 windowSize(1000, 700);
     static ImVec2 windowPos(100, 100);
+    static bool windowVisible = true;
 
     static int selectedTab = 0;
-    static int prevSelectedTab = 0;
+    static int prevSelectedTab = -1;
     const char* tabs[] = {"Combat", "Movement", "World", "Player", "Visual"};
     const int tabCount = 5;
     static int selectedModule = -1;
     static int prevSelectedModule = -1;
 
-    // 动画状态
     static float tabAnimProgress[5] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-    static float moduleAnimProgress[3] = {0.0f, 0.0f, 0.0f}; // KillAura, Speed, Interface
-    static float indicatorAnimProgress[5] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // 导航栏指示器
-    static float moduleIndicatorProgress[3] = {0.0f, 0.0f, 0.0f}; // 模块指示器
+    static float moduleAnimProgress[3] = {0.0f, 0.0f, 0.0f};
+    static float indicatorAnimProgress[5] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    static float moduleIndicatorProgress[3] = {0.0f, 0.0f, 0.0f};
     static float contentFadeProgress = 1.0f;
     
-    // 开关动画状态
     static float toggleAnimProgress[10] = {0};
-    static bool prevToggleState[10] = {false};
     
-    // 滑块动画状态
     static float sliderDisplayValue[10] = {0};
 
     static bool killAuraEnabled = false;
@@ -295,12 +280,10 @@ void EGL::EglThread() {
 
     static bool interfaceEnabled = true;
     
-    // 初始化滑块显示值
     sliderDisplayValue[0] = killAuraRange;
     sliderDisplayValue[1] = (float)killAuraCPS;
     sliderDisplayValue[2] = killAuraFOV;
     sliderDisplayValue[3] = speedValue;
-    sliderDisplayValue[4] = fontScale;
     sliderDisplayValue[5] = bgAlpha;
     sliderDisplayValue[6] = globalRounding;
 
@@ -321,25 +304,23 @@ void EGL::EglThread() {
             continue;
         }
         
+        // 修复重进游戏UI消失的问题 - 确保窗口始终可见
+        if (!windowVisible) {
+            windowVisible = true;
+        }
+        
         imguiMainWinStart();
 
         io->FontGlobalScale = fontScale;
         ImGui::SetNextWindowBgAlpha(bgAlpha);
 
-        // 样式设置 - 使用全局圆角
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, globalRounding * 2.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, globalRounding * 1.5f);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, globalRounding);
         ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, globalRounding);
-        // 最外层菜单滚动条保留，子面板隐藏滚动条
         ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 12.0f);
-        // 按钮文本居中
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
-        // 标题栏高度固定
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 10.0f));
-        
-        // 保存原始字体缩放，用于导航栏和左侧列表
-        float originalFontScale = io->FontGlobalScale;
 
         ImGui::PushStyleColor(ImGuiCol_TitleBg, themeColor);
         ImGui::PushStyleColor(ImGuiCol_TitleBgActive, themeColor);
@@ -364,45 +345,38 @@ void EGL::EglThread() {
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(themeColor.x+0.1f, themeColor.y+0.1f, themeColor.z+0.1f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ImVec4(themeColor.x+0.15f, themeColor.y+0.15f, themeColor.z+0.15f, 1.0f));
 
-        // 设置窗口位置，允许拖动
         ImGui::SetNextWindowPos(windowPos, ImGuiCond_FirstUseEver);
         
         // 使用 NoCollapse 允许拖动标题栏
-        ImGui::Begin("GameMenu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("GameMenu", &windowVisible, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
         input->g_window = g_window = ImGui::GetCurrentWindow();
         ImGui::SetWindowSize(windowSize, ImGuiCond_Always);
         
-        // 保存窗口位置用于下次渲染
         windowPos = ImGui::GetWindowPos();
 
         ImVec2 winPos = ImGui::GetWindowPos();
         ImVec2 winSize = ImGui::GetWindowSize();
         float leftPanelWidth = 200.0f;
-        float padding = 30.0f; // 增加padding避免数字被遮挡
+        float padding = 30.0f;
         float rightPanelWidth = winSize.x - leftPanelWidth - 50.0f;
         float contentAvailWidth = rightPanelWidth - padding;
         float contentHeight = winSize.y - 130.0f;
 
-        // 动画速度
         float animSpeed = 0.15f;
 
-        // 检测导航栏切换，触发内容淡入淡出
         if (selectedTab != prevSelectedTab) {
             contentFadeProgress = 0.0f;
             prevSelectedTab = selectedTab;
         }
-        // 检测模块切换，触发内容淡入淡出
         if (selectedModule != prevSelectedModule) {
             contentFadeProgress = 0.0f;
             prevSelectedModule = selectedModule;
         }
-        // 内容淡入动画
         if (contentFadeProgress < 1.0f) {
             contentFadeProgress += animSpeed;
             if (contentFadeProgress > 1.0f) contentFadeProgress = 1.0f;
         }
 
-        // 更新导航栏动画
         for (int i = 0; i < tabCount; i++) {
             float target = (i == selectedTab) ? 1.0f : 0.0f;
             if (tabAnimProgress[i] < target) {
@@ -412,7 +386,6 @@ void EGL::EglThread() {
                 tabAnimProgress[i] -= animSpeed;
                 if (tabAnimProgress[i] < target) tabAnimProgress[i] = target;
             }
-            // 指示器动画
             if (indicatorAnimProgress[i] < target) {
                 indicatorAnimProgress[i] += animSpeed;
                 if (indicatorAnimProgress[i] > target) indicatorAnimProgress[i] = target;
@@ -423,7 +396,7 @@ void EGL::EglThread() {
         }
 
         // 顶部导航栏 - 固定字体大小
-        io->FontGlobalScale = 1.0f; // 导航栏字体固定为1.0
+        io->FontGlobalScale = 1.0f;
         
         float tabHeight = 40.0f;
         float tabWidth = (winSize.x - 50.0f) / tabCount;
@@ -431,37 +404,19 @@ void EGL::EglThread() {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 themeColorU32 = ImGui::ColorConvertFloat4ToU32(themeColor);
         
-        // 先计算导航栏的基准Y位置
         float navBaseY = ImGui::GetCursorScreenPos().y;
 
         for (int i = 0; i < tabCount; i++) {
             if (i > 0) ImGui::SameLine(0, 5);
             
-            // 计算动画值 - 只有文字透明度变化，位置不变
             float opacity = Lerp(0.6f, 1.0f, tabAnimProgress[i]);
             
-            // 悬浮动画 - 使用hovered状态
-            static float hoverProgress[5] = {0};
-            ImVec2 cursorBefore = ImGui::GetCursorScreenPos();
-            bool isHovered = ImGui::IsMouseHoveringRect(cursorBefore, 
-                ImVec2(cursorBefore.x + tabWidth, cursorBefore.y + tabHeight));
-            float hoverTarget = isHovered ? 1.0f : 0.0f;
-            if (hoverProgress[i] < hoverTarget) {
-                hoverProgress[i] += 0.1f;
-                if (hoverProgress[i] > hoverTarget) hoverProgress[i] = hoverTarget;
-            } else if (hoverProgress[i] > hoverTarget) {
-                hoverProgress[i] -= 0.1f;
-                if (hoverProgress[i] < hoverTarget) hoverProgress[i] = hoverTarget;
-            }
-            float hoverOpacity = Lerp(0.0f, 0.3f, hoverProgress[i]);
-            
-            // 无背景按钮，带悬浮动画
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(themeColor.x, themeColor.y, themeColor.z, hoverOpacity));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(themeColor.x, themeColor.y, themeColor.z, hoverOpacity));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(themeColor.x, themeColor.y, themeColor.z, 0.4f));
+            // 无背景按钮，无悬浮变色
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
             
-            // 按钮位置固定，不随选中状态改变
             if (ImGui::Button(tabs[i], ImVec2(tabWidth, tabHeight))) {
                 selectedTab = i;
                 selectedModule = -1;
@@ -469,45 +424,49 @@ void EGL::EglThread() {
             
             ImGui::PopStyleColor(4);
             
-            // 绘制底部指示器 - 固定在导航栏底部
+            // 绘制底部指示器 - 从中间向两边展开
             if (indicatorAnimProgress[i] > 0.0f) {
                 ImVec2 screenPos = ImGui::GetItemRectMin();
-                float indicatorWidth = tabWidth * 0.6f;
+                float maxIndicatorWidth = tabWidth * 0.6f;
+                // 从0宽度开始动画到完整宽度
+                float currentIndicatorWidth = maxIndicatorWidth * indicatorAnimProgress[i];
                 float indicatorHeight = 5.0f;
-                float indicatorX = screenPos.x + (tabWidth - indicatorWidth) * 0.5f;
-                // 指示器固定在导航栏底部（相对于窗口内容区域）
-                float indicatorY = navBaseY + tabHeight - indicatorHeight - 2.0f;
+                // 计算中心点，从中心向两边展开
+                float centerX = screenPos.x + tabWidth * 0.5f;
+                float indicatorX = centerX - currentIndicatorWidth * 0.5f;
+                // 往下移一点
+                float indicatorY = navBaseY + tabHeight + 3.0f;
                 
                 ImU32 indicatorColor = IM_COL32(
                     (int)(themeColor.x * 255),
                     (int)(themeColor.y * 255),
                     (int)(themeColor.z * 255),
-                    (int)(255 * indicatorAnimProgress[i])
+                    255
                 );
                 
                 drawList->AddRectFilled(
                     ImVec2(indicatorX, indicatorY),
-                    ImVec2(indicatorX + indicatorWidth, indicatorY + indicatorHeight),
+                    ImVec2(indicatorX + currentIndicatorWidth, indicatorY + indicatorHeight),
                     indicatorColor, indicatorHeight * 0.5f
                 );
             }
         }
         ImGui::Spacing();
+        ImGui::Spacing();
 
-        // 左侧面板 - 无滚动条，固定字体大小
-        io->FontGlobalScale = 1.0f; // 左侧列表字体固定为1.0
+        // 左侧面板 - 启用滚动支持鼠标滚轮
+        io->FontGlobalScale = 1.0f;
         
         ImGui::SetCursorPosX(5.0f);
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false, ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false);
         
         float leftButtonWidth = leftPanelWidth - 30.0f;
         float moduleButtonHeight = 40.0f;
         
-        // 更新模块动画
         int currentModuleIndex = -1;
-        if (selectedTab == 0) currentModuleIndex = 0; // KillAura
-        else if (selectedTab == 1) currentModuleIndex = 1; // Speed
-        else if (selectedTab == 4) currentModuleIndex = 2; // Interface
+        if (selectedTab == 0) currentModuleIndex = 0;
+        else if (selectedTab == 1) currentModuleIndex = 1;
+        else if (selectedTab == 4) currentModuleIndex = 2;
         
         for (int i = 0; i < 3; i++) {
             float target = (i == currentModuleIndex && selectedModule == 0) ? 1.0f : 0.0f;
@@ -518,7 +477,6 @@ void EGL::EglThread() {
                 moduleAnimProgress[i] -= animSpeed;
                 if (moduleAnimProgress[i] < target) moduleAnimProgress[i] = target;
             }
-            // 指示器动画
             if (moduleIndicatorProgress[i] < target) {
                 moduleIndicatorProgress[i] += animSpeed;
                 if (moduleIndicatorProgress[i] > target) moduleIndicatorProgress[i] = target;
@@ -532,27 +490,12 @@ void EGL::EglThread() {
             if (!visible) return;
             
             float opacity = Lerp(0.6f, 1.0f, moduleAnimProgress[moduleIdx]);
-            float offsetX = Lerp(0.0f, 7.0f, moduleAnimProgress[moduleIdx]); // 向右移动7px
+            float offsetX = Lerp(0.0f, 7.0f, moduleAnimProgress[moduleIdx]);
             
-            // 悬浮动画
-            static float moduleHoverProgress[3] = {0};
-            ImVec2 cursorBefore = ImGui::GetCursorScreenPos();
-            bool isHovered = ImGui::IsMouseHoveringRect(cursorBefore, 
-                ImVec2(cursorBefore.x + leftButtonWidth, cursorBefore.y + moduleButtonHeight));
-            float hoverTarget = isHovered ? 1.0f : 0.0f;
-            if (moduleHoverProgress[moduleIdx] < hoverTarget) {
-                moduleHoverProgress[moduleIdx] += 0.1f;
-                if (moduleHoverProgress[moduleIdx] > hoverTarget) moduleHoverProgress[moduleIdx] = hoverTarget;
-            } else if (moduleHoverProgress[moduleIdx] > hoverTarget) {
-                moduleHoverProgress[moduleIdx] -= 0.1f;
-                if (moduleHoverProgress[moduleIdx] < hoverTarget) moduleHoverProgress[moduleIdx] = hoverTarget;
-            }
-            float hoverOpacity = Lerp(0.0f, 0.3f, moduleHoverProgress[moduleIdx]);
-            
-            // 无背景按钮，带悬浮动画
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(themeColor.x, themeColor.y, themeColor.z, hoverOpacity));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(themeColor.x, themeColor.y, themeColor.z, hoverOpacity));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(themeColor.x, themeColor.y, themeColor.z, 0.4f));
+            // 无背景按钮，无悬浮变色
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
             
             ImVec2 buttonPos = ImGui::GetCursorPos();
@@ -565,13 +508,12 @@ void EGL::EglThread() {
             
             ImGui::PopStyleColor(4);
             
-            // 绘制左侧指示器 - 固定在按钮位置，不随文字移动
+            // 绘制左侧指示器
             if (moduleIndicatorProgress[moduleIdx] > 0.0f) {
                 ImVec2 screenPos = ImGui::GetItemRectMin();
                 float indicatorWidth = 5.0f;
                 float indicatorHeight = moduleButtonHeight * 0.6f;
-                // 指示器固定在按钮左侧，不随文字右移
-                float indicatorX = 5.0f + 8.0f; // 左侧面板起始位置 + 边距
+                float indicatorX = 5.0f + 8.0f;
                 float indicatorY = screenPos.y + (moduleButtonHeight - indicatorHeight) * 0.5f;
                 
                 ImU32 indicatorColor = IM_COL32(
@@ -618,22 +560,29 @@ void EGL::EglThread() {
         ImGui::EndChild();
 
         ImGui::SameLine();
+        
+        // 绘制竖直分隔线
+        float separatorX = ImGui::GetCursorScreenPos().x;
+        float separatorY = ImGui::GetCursorScreenPos().y;
+        drawList->AddLine(
+            ImVec2(separatorX, separatorY),
+            ImVec2(separatorX, separatorY + contentHeight),
+            IM_COL32(255, 255, 255, 100),
+            2.0f
+        );
 
-        // 右侧面板 - 无滚动条，恢复字体缩放
+        // 右侧面板 - 启用滚动支持鼠标滚轮
         io->FontGlobalScale = fontScale;
         
-        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false);
         
-        // 应用内容淡入淡出
         ImU32 fadeColor = IM_COL32(255, 255, 255, (int)(255 * contentFadeProgress));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, contentFadeProgress));
-
-        // 开关动画进度现在由AnimatedToggle函数内部管理
         
         auto UpdateSliderAnim = [&](int idx, float currentValue) {
             float diff = currentValue - sliderDisplayValue[idx];
             if (std::abs(diff) > 0.001f) {
-                sliderDisplayValue[idx] += diff * 0.2f; // 平滑插值
+                sliderDisplayValue[idx] += diff * 0.2f;
             } else {
                 sliderDisplayValue[idx] = currentValue;
             }
@@ -705,17 +654,8 @@ void EGL::EglThread() {
             ImGui::Spacing();
 
             ImGui::Text("Mode");
-            // Combo展开动画
-            static float comboOpenProgress = 0.0f;
-            bool comboOpen = ImGui::BeginCombo("##speed_mode", speedModes[speedMode]);
-            if (comboOpen) {
-                comboOpenProgress += 0.2f;
-                if (comboOpenProgress > 1.0f) comboOpenProgress = 1.0f;
-            } else {
-                comboOpenProgress -= 0.2f;
-                if (comboOpenProgress < 0.0f) comboOpenProgress = 0.0f;
-            }
-            if (comboOpen) {
+            // 使用ImGui内置的Combo，支持动画
+            if (ImGui::BeginCombo("##speed_mode", speedModes[speedMode])) {
                 for (int n = 0; n < IM_ARRAYSIZE(speedModes); n++) {
                     const bool is_selected = (speedMode == n);
                     if (ImGui::Selectable(speedModes[n], is_selected)) {
@@ -769,31 +709,6 @@ void EGL::EglThread() {
         ImGui::EndChild();
 
         ImGui::End();
-
-        // 左下角大小调节手柄
-        float handleSize = 50.0f;
-        ImVec2 resizePos(winPos.x + 5, winPos.y + winSize.y - handleSize - 5);
-        
-        ImGui::SetCursorScreenPos(resizePos);
-        ImGui::InvisibleButton("##resize", ImVec2(handleSize, handleSize));
-
-        ImDrawList* fgDrawList = ImGui::GetForegroundDrawList();
-        ImU32 resizeColor = ImGui::ColorConvertFloat4ToU32(themeColor);
-        // 绘制左下角三角形手柄
-        for (int i = 0; i < 3; i++) {
-            float offset = i * 8.0f;
-            fgDrawList->AddLine(
-                ImVec2(resizePos.x + 10, resizePos.y + handleSize - 10 - offset),
-                ImVec2(resizePos.x + 10 + offset, resizePos.y + handleSize - 10),
-                resizeColor, 4.0f
-            );
-        }
-
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
-            ImVec2 delta = ImGui::GetIO().MouseDelta;
-            windowSize.x = ImMax(600.0f, windowSize.x + delta.x);
-            windowSize.y = ImMax(400.0f, windowSize.y + delta.y);
-        }
 
         ImGui::PopStyleVar(7);
         ImGui::PopStyleColor(23);
