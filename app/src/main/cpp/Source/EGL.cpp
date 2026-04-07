@@ -418,8 +418,8 @@ void EGL::EglThread() {
         ImVec2 winSize = ImGui::GetWindowSize();
         // 调整左侧面板宽度，修复右边空白问题
         float leftPanelWidth = 220.0f;
-        // 硬编码右侧面板宽度
-        float rightPanelWidth = 650.0f;
+        // 硬编码右侧面板宽度（增加100px，减去滚动条宽度避免遮挡）
+        float rightPanelWidth = 720.0f;
         float contentHeight = winSize.y - 140.0f;
 
         float animSpeed = 0.08f;
