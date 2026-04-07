@@ -113,6 +113,7 @@ void EGL::onSurfaceDestroy() {
     SurfaceThread = nullptr;
 }
 
+// 开关按钮 - 动画时长增加
 bool AnimatedToggle(const char* label, bool* v, float width, float height, float& animProgress) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return false;
@@ -137,7 +138,8 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
     ImVec4 themeColor = style.Colors[ImGuiCol_Button];
     
     float targetProgress = *v ? 1.0f : 0.0f;
-    float animSpeed = 0.15f;
+    // 动画时长增加 - 从0.15f改为0.08f（更慢）
+    float animSpeed = 0.08f;
     if (animProgress < targetProgress) {
         animProgress += animSpeed;
         if (animProgress > targetProgress) animProgress = targetProgress;
@@ -172,8 +174,8 @@ bool AnimatedToggle(const char* label, bool* v, float width, float height, float
     return pressed;
 }
 
-// 截图样式的滑块 - 名称在左，数值在右，滑块条在下（无label显示）
-bool ScreenshotStyleSliderFloat(float* v, float v_min, float v_max, float displayValue) {
+// 带动画的滑块
+bool AnimatedSliderFloat(float* v, float v_min, float v_max, float& displayValue, float animSpeed) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return false;
 
@@ -184,7 +186,14 @@ bool ScreenshotStyleSliderFloat(float* v, float v_min, float v_max, float displa
     float lineHeight = 6.0f;
     float touchHeight = 30.0f;
     
-    // 滑块条
+    // 动画值
+    float diff = *v - displayValue;
+    if (std::abs(diff) > 0.001f) {
+        displayValue += diff * animSpeed;
+    } else {
+        displayValue = *v;
+    }
+    
     ImVec2 pos = ImGui::GetCursorScreenPos();
     float width = availWidth;
     
@@ -192,7 +201,6 @@ bool ScreenshotStyleSliderFloat(float* v, float v_min, float v_max, float displa
     float visualY = pos.y + (touchHeight - lineHeight) * 0.5f;
     ImRect visualBb(ImVec2(pos.x, visualY), ImVec2(pos.x + width, visualY + lineHeight));
     
-    // 使用隐藏label的方式
     char hiddenLabel[32];
     snprintf(hiddenLabel, sizeof(hiddenLabel), "##slider_%p", (void*)v);
     const ImGuiID id = window->GetID(hiddenLabel);
@@ -219,8 +227,8 @@ bool ScreenshotStyleSliderFloat(float* v, float v_min, float v_max, float displa
     // 背景条
     drawList->AddRectFilled(visualBb.Min, visualBb.Max, bgColor, rounding);
     
-    // 填充条
-    float fillT = (*v - v_min) / (v_max - v_min);
+    // 填充条 - 使用动画值
+    float fillT = (displayValue - v_min) / (v_max - v_min);
     fillT = ImClamp(fillT, 0.0f, 1.0f);
     float fillWidth = visualBb.GetWidth() * fillT;
     drawList->AddRectFilled(visualBb.Min, ImVec2(visualBb.Min.x + fillWidth, visualBb.Max.y), fillColor, rounding);
@@ -228,37 +236,32 @@ bool ScreenshotStyleSliderFloat(float* v, float v_min, float v_max, float displa
     return pressed || held;
 }
 
-bool ScreenshotStyleSliderInt(int* v, int v_min, int v_max, float displayValue) {
+bool AnimatedSliderInt(int* v, int v_min, int v_max, float& displayValue, float animSpeed) {
     float vf = (float)*v;
-    bool changed = ScreenshotStyleSliderFloat(&vf, (float)v_min, (float)v_max, displayValue);
+    bool changed = AnimatedSliderFloat(&vf, (float)v_min, (float)v_max, displayValue, animSpeed);
     *v = (int)vf;
     return changed;
 }
 
-// 一劳永逸的辉光绘制方法 - 使用按钮的实际矩形区域计算文本位置
-void DrawGlowTextOnButton(ImDrawList* drawList, ImVec2 buttonMin, ImVec2 buttonMax, const char* text, ImU32 color, float glowIntensity, float textOffsetX) {
-    ImVec2 textSize = ImGui::CalcTextSize(text);
-    // 计算文本居中位置
-    float textX = buttonMin.x + textOffsetX + (buttonMax.x - buttonMin.x - textSize.x) * 0.5f;
-    float textY = buttonMin.y + (buttonMax.y - buttonMin.y - textSize.y) * 0.5f;
+// 辉光文本 - 使用动画强度
+void DrawGlowTextAnimated(ImDrawList* drawList, ImVec2 pos, const char* text, float glowIntensity) {
+    ImU32 color = IM_COL32(255, 255, 255, 255);
     
-    // 绘制辉光效果 - 加大辉光
-    for (int i = 6; i >= 1; i--) {
-        float alpha = (120.0f / i) * glowIntensity;
-        ImU32 glowColor = IM_COL32(
-            (int)(((color >> IM_COL32_R_SHIFT) & 0xFF) * 0.95f),
-            (int)(((color >> IM_COL32_G_SHIFT) & 0xFF) * 0.95f),
-            (int)(((color >> IM_COL32_B_SHIFT) & 0xFF) * 0.95f),
-            (int)alpha
-        );
-        float offset = i * 1.2f;
-        drawList->AddText(ImVec2(textX - offset, textY), glowColor, text);
-        drawList->AddText(ImVec2(textX + offset, textY), glowColor, text);
-        drawList->AddText(ImVec2(textX, textY - offset), glowColor, text);
-        drawList->AddText(ImVec2(textX, textY + offset), glowColor, text);
+    // 根据动画强度绘制辉光
+    int layers = (int)(6 * glowIntensity);
+    if (layers < 1) layers = 1;
+    
+    for (int i = layers; i >= 1; i--) {
+        float alpha = (100.0f / i) * glowIntensity;
+        ImU32 glowColor = IM_COL32(255, 255, 255, (int)alpha);
+        float offset = i * 1.0f * glowIntensity;
+        drawList->AddText(ImVec2(pos.x - offset, pos.y), glowColor, text);
+        drawList->AddText(ImVec2(pos.x + offset, pos.y), glowColor, text);
+        drawList->AddText(ImVec2(pos.x, pos.y - offset), glowColor, text);
+        drawList->AddText(ImVec2(pos.x, pos.y + offset), glowColor, text);
     }
     // 绘制主文本
-    drawList->AddText(ImVec2(textX, textY), color, text);
+    drawList->AddText(pos, color, text);
 }
 
 void EGL::EglThread() {
@@ -295,12 +298,15 @@ void EGL::EglThread() {
 
     // 动画状态
     static float tabAnimProgress[5] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-    static float moduleAnimProgress[10] = {0};
+    static float moduleGlowAnim[10] = {0};
     static float contentFadeProgress = 1.0f;
     static float toggleAnimProgress[50] = {0};
     static float sliderDisplayValue[50] = {0};
     static float langToggleAnim = 0.0f;
     static bool isChinese = false;
+    
+    // 滑块动画速度
+    const float sliderAnimSpeed = 0.15f;
     
     // 按键绑定状态
     static int bindingTab = -1;
@@ -374,14 +380,14 @@ void EGL::EglThread() {
 
         ImGui::SetNextWindowBgAlpha(bgAlpha);
         
-        // 使用默认窗口标志，确保可以拖动
+        // 删除关闭按钮 - 使用NoNav标志
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, globalRounding * 2.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, globalRounding * 1.5f);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, globalRounding);
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, globalRounding);
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 16.0f);
+        // 滚动条宽度27.8px
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 27.8f);
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 6.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
@@ -409,7 +415,6 @@ void EGL::EglThread() {
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, themeColorWithAlpha);
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(themeColor.x+0.1f, themeColor.y+0.1f, themeColor.z+0.1f, themeOverlayAlpha));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ImVec4(themeColor.x+0.15f, themeColor.y+0.15f, themeColor.z+0.15f, themeOverlayAlpha));
-        // 全局字体颜色
         ImGui::PushStyleColor(ImGuiCol_Text, textColor);
 
         ImGui::SetNextWindowPos(windowPos, ImGuiCond_FirstUseEver);
@@ -418,7 +423,6 @@ void EGL::EglThread() {
         char windowTitle[128];
         snprintf(windowTitle, sizeof(windowTitle), "%s", clientName);
         
-        // 使用默认Begin，支持拖动
         bool windowOpen = true;
         ImGui::Begin(windowTitle, &windowOpen, windowFlags);
         input->g_window = g_window = ImGui::GetCurrentWindow();
@@ -426,10 +430,9 @@ void EGL::EglThread() {
 
         ImVec2 winPos = ImGui::GetWindowPos();
         ImVec2 winSize = ImGui::GetWindowSize();
-        float leftPanelWidth = 200.0f;
-        float padding = 30.0f;
-        float rightPanelWidth = winSize.x - leftPanelWidth - 60.0f;
-        float contentAvailWidth = rightPanelWidth - padding;
+        // 调整左侧面板宽度，修复右边空白问题
+        float leftPanelWidth = 220.0f;
+        float rightPanelWidth = winSize.x - leftPanelWidth - 50.0f;
         float contentHeight = winSize.y - 140.0f;
 
         float animSpeed = 0.15f;
@@ -462,7 +465,7 @@ void EGL::EglThread() {
         io->FontGlobalScale = 1.0f;
         
         float tabHeight = 35.0f;
-        float tabWidth = (winSize.x - 60.0f) / tabCount;
+        float tabWidth = (winSize.x - 50.0f) / tabCount;
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 themeColorU32 = ImGui::ColorConvertFloat4ToU32(themeColorWithAlpha);
@@ -513,10 +516,10 @@ void EGL::EglThread() {
         ImGui::SetCursorPosX(10.0f);
         
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 15.0f));
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 15.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 20.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         ImGui::PopStyleVar();
         
-        float leftButtonWidth = leftPanelWidth - 45.0f;
+        float leftButtonWidth = leftPanelWidth - 50.0f;
         float moduleButtonHeight = 48.0f;
         
         const char** currentModules = nullptr;
@@ -536,20 +539,21 @@ void EGL::EglThread() {
             case 4: currentModules = visualModulesEN; currentModulesCN = visualModulesCN; currentEnabled = visualEnabled; currentValues = visualValues; currentInts = visualInts; currentBinds = visualBinds; moduleOffset = 40; break;
         }
         
+        // 更新辉光动画
         for (int i = 0; i < moduleCount; i++) {
-            float target = (i == selectedModule) ? 1.0f : 0.0f;
-            if (moduleAnimProgress[i] < target) {
-                moduleAnimProgress[i] += animSpeed;
-                if (moduleAnimProgress[i] > target) moduleAnimProgress[i] = target;
-            } else if (moduleAnimProgress[i] > target) {
-                moduleAnimProgress[i] -= animSpeed;
-                if (moduleAnimProgress[i] < target) moduleAnimProgress[i] = target;
+            float targetGlow = (i == selectedModule) ? 0.5f : 0.0f;
+            if (moduleGlowAnim[i] < targetGlow) {
+                moduleGlowAnim[i] += 0.05f;
+                if (moduleGlowAnim[i] > targetGlow) moduleGlowAnim[i] = targetGlow;
+            } else if (moduleGlowAnim[i] > targetGlow) {
+                moduleGlowAnim[i] -= 0.05f;
+                if (moduleGlowAnim[i] < targetGlow) moduleGlowAnim[i] = targetGlow;
             }
         }
 
         for (int i = 0; i < moduleCount; i++) {
-            float opacity = Lerp(0.6f, 1.0f, moduleAnimProgress[i]);
-            float offsetX = Lerp(0.0f, 7.0f, moduleAnimProgress[i]);
+            float opacity = Lerp(0.6f, 1.0f, moduleGlowAnim[i] * 2.0f);
+            float offsetX = Lerp(0.0f, 7.0f, moduleGlowAnim[i] * 2.0f);
             
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -561,13 +565,13 @@ void EGL::EglThread() {
             
             const char* moduleLabel = isChinese ? currentModulesCN[i] : currentModules[i];
             
-            // 如果是选中的模块，先绘制辉光（在按钮之前）
-            if (i == selectedModule) {
-                // 获取按钮矩形区域（用于计算文本位置）
+            // 绘制辉光文本（使用动画强度）
+            if (moduleGlowAnim[i] > 0.001f) {
                 ImVec2 cursorScreenPos = ImGui::GetCursorScreenPos();
-                ImRect buttonRect(cursorScreenPos, ImVec2(cursorScreenPos.x + leftButtonWidth, cursorScreenPos.y + moduleButtonHeight));
-                // 绘制辉光（使用按钮实际区域）
-                DrawGlowTextOnButton(drawList, buttonRect.Min, buttonRect.Max, moduleLabel, IM_COL32(255, 255, 255, 255), 1.5f, offsetX);
+                ImVec2 textSize = ImGui::CalcTextSize(moduleLabel);
+                float textX = cursorScreenPos.x + (leftButtonWidth - textSize.x) * 0.5f + offsetX;
+                float textY = cursorScreenPos.y + (moduleButtonHeight - textSize.y) * 0.5f;
+                DrawGlowTextAnimated(drawList, ImVec2(textX, textY), moduleLabel, moduleGlowAnim[i]);
             }
             
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(textColor.x*0.8f, textColor.y*0.8f, textColor.z*0.8f, opacity));
@@ -605,16 +609,7 @@ void EGL::EglThread() {
         
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(textColor.x, textColor.y, textColor.z, contentFadeProgress));
         
-        auto UpdateSliderAnim = [&](int idx, float currentValue) {
-            float diff = currentValue - sliderDisplayValue[idx];
-            if (std::abs(diff) > 0.001f) {
-                sliderDisplayValue[idx] += diff * 0.2f;
-            } else {
-                sliderDisplayValue[idx] = currentValue;
-            }
-        };
-        
-        // 截图样式的设置项
+        // 截图样式的设置项 - keybind放到最右边
         auto DrawSettingRow = [&](const char* name, int idx, bool isToggle, float* fval = nullptr, float fmin = 0, float fmax = 0, int* ival = nullptr, int imin = 0, int imax = 0) {
             float availWidth = ImGui::GetContentRegionAvail().x;
             
@@ -628,50 +623,43 @@ void EGL::EglThread() {
                 // 数值显示在右侧
                 ImGui::SameLine(availWidth - 50);
                 if (fval != nullptr) {
-                    UpdateSliderAnim(idx, *fval);
-                    ImGui::Text("%.1f", sliderDisplayValue[idx]);
+                    ImGui::Text("%.1f", *fval);
                 } else if (ival != nullptr) {
-                    UpdateSliderAnim(idx, (float)*ival);
-                    ImGui::Text("%d", (int)sliderDisplayValue[idx]);
+                    ImGui::Text("%d", *ival);
                 }
                 
-                // 滑块条在下一行（无label显示）
+                // 滑块条在下一行（带动画）
                 ImGui::Spacing();
                 if (fval != nullptr) {
-                    ScreenshotStyleSliderFloat(fval, fmin, fmax, sliderDisplayValue[idx]);
+                    AnimatedSliderFloat(fval, fmin, fmax, sliderDisplayValue[moduleOffset + idx], sliderAnimSpeed);
                 } else if (ival != nullptr) {
-                    ScreenshotStyleSliderInt(ival, imin, imax, sliderDisplayValue[idx]);
+                    AnimatedSliderInt(ival, imin, imax, sliderDisplayValue[moduleOffset + idx], sliderAnimSpeed);
                 }
             }
             ImGui::Spacing();
             ImGui::Spacing();
         };
         
-        // 按键绑定区域 - 字体缩小，上下居中
+        // 按键绑定区域 - 放到最右边，文本一直是None，缩小字体，上下居中
         auto DrawKeyBind = [&](int idx) {
             float availWidth = ImGui::GetContentRegionAvail().x;
             
-            // 保存当前字体缩放
-            float oldFontScale = io->FontGlobalScale;
-            // 缩小字体
-            io->FontGlobalScale = oldFontScale * 0.8f;
-            
             ImGui::Text(isChinese ? "按键绑定" : "Key Bind");
-            ImGui::SameLine(100);
             
-            char bindButtonLabel[64];
-            if (isWaitingForBind && bindingTab == selectedTab && bindingModule == idx) {
-                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", isChinese ? "按任意键..." : "Press key...");
-            } else {
-                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", currentBinds[idx]);
-            }
+            // 放到最右边
+            ImGui::SameLine(availWidth - 80);
             
-            // 计算按钮高度使文本居中
-            float buttonHeight = 24.0f;
+            // 保存当前字体缩放并缩小
+            float oldFontScale = io->FontGlobalScale;
+            io->FontGlobalScale = oldFontScale * 0.7f;
+            
+            // 按钮高度使文本居中
+            float buttonHeight = 22.0f;
             
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.25f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
-            if (ImGui::Button(bindButtonLabel, ImVec2(80, buttonHeight))) {
+            // 文本一直是"None"
+            if (ImGui::Button("None", ImVec2(70, buttonHeight))) {
                 bindingTab = selectedTab;
                 bindingModule = idx;
                 isWaitingForBind = true;
@@ -1045,67 +1033,64 @@ void EGL::EglThread() {
                 
                 // 启用开关
                 ImGui::Text(isChinese ? "启用" : "Enabled");
-                ImGui::SameLine(contentAvailWidth - 65);
+                ImGui::SameLine(rightPanelWidth - 80);
                 if (AnimatedToggle("##interface_enabled", &visualEnabled[0], 60, 28, toggleAnimProgress[40])) {}
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 背景透明度滑块
                 ImGui::Text(isChinese ? "背景透明度" : "Background Alpha");
-                ImGui::SameLine(contentAvailWidth - 50);
-                UpdateSliderAnim(40, bgAlpha);
-                ImGui::Text("%.2f", sliderDisplayValue[40]);
+                ImGui::SameLine(rightPanelWidth - 60);
+                ImGui::Text("%.2f", bgAlpha);
                 ImGui::Spacing();
-                ScreenshotStyleSliderFloat(&bgAlpha, 0.1f, 1.0f, sliderDisplayValue[40]);
+                AnimatedSliderFloat(&bgAlpha, 0.1f, 1.0f, sliderDisplayValue[40], sliderAnimSpeed);
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 主题颜色
                 ImGui::Text(isChinese ? "主题颜色" : "Theme Color");
-                ImGui::SameLine(contentAvailWidth - 80);
+                ImGui::SameLine(rightPanelWidth - 90);
                 ImGui::ColorEdit3("##theme_color", (float*)&themeColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 主题透明度
                 ImGui::Text(isChinese ? "主题透明度" : "Theme Alpha");
-                ImGui::SameLine(contentAvailWidth - 50);
-                UpdateSliderAnim(41, themeOverlayAlpha);
-                ImGui::Text("%.2f", sliderDisplayValue[41]);
+                ImGui::SameLine(rightPanelWidth - 60);
+                ImGui::Text("%.2f", themeOverlayAlpha);
                 ImGui::Spacing();
-                ScreenshotStyleSliderFloat(&themeOverlayAlpha, 0.1f, 1.0f, sliderDisplayValue[41]);
+                AnimatedSliderFloat(&themeOverlayAlpha, 0.1f, 1.0f, sliderDisplayValue[41], sliderAnimSpeed);
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 全局圆角
                 ImGui::Text(isChinese ? "全局圆角" : "Global Rounding");
-                ImGui::SameLine(contentAvailWidth - 50);
-                UpdateSliderAnim(42, globalRounding);
-                ImGui::Text("%.0f", sliderDisplayValue[42]);
+                ImGui::SameLine(rightPanelWidth - 60);
+                ImGui::Text("%.0f", globalRounding);
                 ImGui::Spacing();
-                ScreenshotStyleSliderFloat(&globalRounding, 0.0f, 20.0f, sliderDisplayValue[42]);
+                AnimatedSliderFloat(&globalRounding, 0.0f, 20.0f, sliderDisplayValue[42], sliderAnimSpeed);
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 全局字体颜色
                 ImGui::Text(isChinese ? "字体颜色" : "Text Color");
-                ImGui::SameLine(contentAvailWidth - 80);
+                ImGui::SameLine(rightPanelWidth - 90);
                 ImGui::ColorEdit3("##text_color", (float*)&textColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
                 // 客户端名称
                 ImGui::Text(isChinese ? "客户端名称" : "Client Name");
-                ImGui::SameLine(contentAvailWidth - 200);
+                ImGui::SameLine(rightPanelWidth - 210);
                 ImGui::PushItemWidth(180);
                 ImGui::InputText("##client_name", clientName, sizeof(clientName));
                 ImGui::PopItemWidth();
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
-                // 中英文切换 - 使用开关按钮
+                // 中英文切换
                 ImGui::Text(isChinese ? "中文" : "English");
-                ImGui::SameLine(contentAvailWidth - 65);
+                ImGui::SameLine(rightPanelWidth - 80);
                 if (AnimatedToggle("##lang_toggle", &isChinese, 60, 28, langToggleAnim)) {}
             }
             else {
