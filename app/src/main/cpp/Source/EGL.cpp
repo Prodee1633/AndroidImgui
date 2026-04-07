@@ -236,18 +236,19 @@ bool AnimatedSliderInt(const char* label, int* v, int v_min, int v_max, float li
 
 void DrawGlowText(ImDrawList* drawList, ImVec2 pos, ImU32 color, const char* text, float glowIntensity = 1.0f) {
     // 绘制辉光效果
-    for (int i = 3; i >= 1; i--) {
-        float alpha = (80 / i) * glowIntensity;
+    for (int i = 4; i >= 1; i--) {
+        float alpha = (100.0f / i) * glowIntensity;
         ImU32 glowColor = IM_COL32(
-            (color >> IM_COL32_R_SHIFT) & 0xFF,
-            (color >> IM_COL32_G_SHIFT) & 0xFF,
-            (color >> IM_COL32_B_SHIFT) & 0xFF,
+            (int)(((color >> IM_COL32_R_SHIFT) & 0xFF) * 0.8f),
+            (int)(((color >> IM_COL32_G_SHIFT) & 0xFF) * 0.8f),
+            (int)(((color >> IM_COL32_B_SHIFT) & 0xFF) * 0.8f),
             (int)alpha
         );
-        drawList->AddText(ImVec2(pos.x - i * 0.5f, pos.y), glowColor, text);
-        drawList->AddText(ImVec2(pos.x + i * 0.5f, pos.y), glowColor, text);
-        drawList->AddText(ImVec2(pos.x, pos.y - i * 0.5f), glowColor, text);
-        drawList->AddText(ImVec2(pos.x, pos.y + i * 0.5f), glowColor, text);
+        float offset = i * 0.8f;
+        drawList->AddText(ImVec2(pos.x - offset, pos.y), glowColor, text);
+        drawList->AddText(ImVec2(pos.x + offset, pos.y), glowColor, text);
+        drawList->AddText(ImVec2(pos.x, pos.y - offset), glowColor, text);
+        drawList->AddText(ImVec2(pos.x, pos.y + offset), glowColor, text);
     }
     // 绘制主文本
     drawList->AddText(pos, color, text);
@@ -273,7 +274,6 @@ void EGL::EglThread() {
     static float globalRounding = 10.0f;
     static ImVec2 windowSize(1000, 700);
     static ImVec2 windowPos(100, 100);
-    static bool windowVisible = true;
     static char clientName[64] = "Fate";
     static bool isChinese = false;
     
@@ -299,43 +299,55 @@ void EGL::EglThread() {
     static float toggleAnimProgress[50] = {0};
     static float sliderDisplayValue[50] = {0};
     
-    // 滚动位置
-    static float leftPanelScroll = 0.0f;
-    static float settingsScroll = 0.0f;
+    // 当前正在绑定的按键索引
+    static int bindingModuleIdx = -1;
+    static bool isWaitingForBind = false;
 
     // 模块数据 - Combat
     static bool combatEnabled[10] = {false};
     static float combatValues[10][5] = {0};
     static int combatInts[10][5] = {0};
-    static char combatBinds[10][16] = {"None"};
+    static char combatBinds[10][16] = {"None","None","None","None","None","None","None","None","None","None"};
     
     // 模块数据 - Movement
     static bool moveEnabled[10] = {false};
     static float moveValues[10][5] = {0};
     static int moveInts[10][5] = {0};
-    static char moveBinds[10][16] = {"None"};
+    static char moveBinds[10][16] = {"None","None","None","None","None","None","None","None","None","None"};
     
     // 模块数据 - World
     static bool worldEnabled[10] = {false};
     static float worldValues[10][5] = {0};
     static int worldInts[10][5] = {0};
-    static char worldBinds[10][16] = {"None"};
+    static char worldBinds[10][16] = {"None","None","None","None","None","None","None","None","None","None"};
     
     // 模块数据 - Player
     static bool playerEnabled[10] = {false};
     static float playerValues[10][5] = {0};
     static int playerInts[10][5] = {0};
-    static char playerBinds[10][16] = {"None"};
+    static char playerBinds[10][16] = {"None","None","None","None","None","None","None","None","None","None"};
     
     // 模块数据 - Visual
     static bool visualEnabled[10] = {false};
     static float visualValues[10][5] = {0};
     static int visualInts[10][5] = {0};
-    static char visualBinds[10][16] = {"None"};
+    static char visualBinds[10][16] = {"None","None","None","None","None","None","None","None","None","None"};
 
     // 初始化默认值
     combatValues[0][0] = 4.0f; combatInts[0][0] = 12; combatInts[0][1] = 180;
     moveValues[0][0] = 1.5f; moveInts[0][0] = 0;
+    
+    // 模块名称
+    const char* combatModulesEN[] = {"KillAura", "AutoClicker", "Criticals", "Velocity", "Reach", "AimAssist", "BowAimbot", "AutoArmor", "AutoSoup", "AutoPot"};
+    const char* combatModulesCN[] = {"杀戮光环", "自动点击", "暴击", "速度减免", "距离加成", "瞄准辅助", "弓箭瞄准", "自动盔甲", "自动喝汤", "自动药水"};
+    const char* moveModulesEN[] = {"Speed", "Fly", "LongJump", "HighJump", "Step", "NoSlow", "Sprint", "Strafe", "Jesus", "Spider"};
+    const char* moveModulesCN[] = {"速度", "飞行", "远跳", "高跳", "台阶", "无减速", "自动疾跑", "平移", "水上行走", "爬墙"};
+    const char* worldModulesEN[] = {"Scaffold", "Tower", "Nuker", "FastPlace", "AutoTool", "ChestStealer", "InventoryCleaner", "FastBreak", "Eagle", "ClickTP"};
+    const char* worldModulesCN[] = {"脚手架", "快速搭高", "破坏者", "快速放置", "自动工具", "箱子偷窃", "背包清理", "快速破坏", "鹰眼", "点击传送"};
+    const char* playerModulesEN[] = {"NoFall", "AntiFire", "FastEat", "AutoRespawn", "AutoFish", "Freecam", "Blink", "AntiAFK", "AutoJoin", "NameProtect"};
+    const char* playerModulesCN[] = {"无摔落", "抗火", "快速进食", "自动重生", "自动钓鱼", "自由视角", "闪烁", "反挂机", "自动加入", "名称保护"};
+    const char* visualModulesEN[] = {"Interface", "ESP", "Tracers", "Nametags", "Chams", "XRay", "Fullbright", "ItemESP", "StorageESP", "Waypoints"};
+    const char* visualModulesCN[] = {"界面", "透视", "追踪线", "名称标签", "染色", "矿物透视", "全亮", "物品透视", "容器透视", "路径点"};
     
     while (true) {
         if (this->isDestroy) {
@@ -356,8 +368,8 @@ void EGL::EglThread() {
         
         // 更新菜单动画
         float targetMenuProgress = menuOpen ? 1.0f : 0.0f;
-        float openSpeed = 1.0f / (0.6f * 60.0f);  // 0.6秒打开
-        float closeSpeed = 1.0f / (0.5f * 60.0f); // 0.5秒关闭
+        float openSpeed = 1.0f / (0.6f * 60.0f);
+        float closeSpeed = 1.0f / (0.5f * 60.0f);
         float menuSpeed = menuOpen ? openSpeed : closeSpeed;
         
         if (menuAnimProgress < targetMenuProgress) {
@@ -372,37 +384,54 @@ void EGL::EglThread() {
         menuScale = 0.8f + 0.2f * easedProgress;
         menuAlpha = easedProgress;
         
-        // 如果菜单完全关闭，跳过渲染
+        imguiMainWinStart();
+
+        io->FontGlobalScale = fontScale;
+        
+        ImVec4 themeColorWithAlpha = themeColor;
+        themeColorWithAlpha.w = themeOverlayAlpha;
+
+        // 绘制菜单开关按钮（在菜单外部）
+        if (!menuOpen || menuAnimProgress > 0.0f) {
+            ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(120, 50), ImGuiCond_Always);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.18f, 0.9f));
+            ImGui::Begin("MenuToggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+            if (ImGui::Button(menuOpen ? (isChinese ? "隐藏" : "Hide") : (isChinese ? "显示" : "Show"), ImVec2(100, 30))) {
+                menuOpen = !menuOpen;
+            }
+            ImGui::End();
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar();
+        }
+        
+        // 如果菜单完全关闭，跳过主菜单渲染
         if (menuAnimProgress <= 0.0f && !menuOpen) {
-            imguiMainWinStart();
             imguiMainWinEnd();
             if (mEglDisplay != EGL_NO_DISPLAY && mEglSurface != EGL_NO_SURFACE) {
                 this->swapBuffers();
+            }
+            if (input != nullptr) {
+                input->fps = this->FPS;
             }
             usleep(16000);
             continue;
         }
         
-        imguiMainWinStart();
-
-        io->FontGlobalScale = fontScale;
-        
-        // 应用主题颜色透明度
-        ImVec4 themeColorWithAlpha = themeColor;
-        themeColorWithAlpha.w = themeOverlayAlpha;
-
         ImGui::SetNextWindowBgAlpha(bgAlpha * menuAlpha);
         
-        // 设置窗口标志 - 只能拖动标题栏，无关闭按钮
-        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
+        // 使用MenuBar标志允许拖动标题栏
+        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, globalRounding * 2.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, globalRounding * 1.5f);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, globalRounding);
         ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, globalRounding);
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 20.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 16.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 10.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 6.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
 
         ImGui::PushStyleColor(ImGuiCol_TitleBg, themeColorWithAlpha);
         ImGui::PushStyleColor(ImGuiCol_TitleBgActive, themeColorWithAlpha);
@@ -422,7 +451,7 @@ void EGL::EglThread() {
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.12f, bgAlpha * menuAlpha));
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.2f, 0.2f, 0.25f, 0.5f));
-        ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.08f, 0.08f, 0.1f, 0.5f));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, themeColorWithAlpha);
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(themeColor.x+0.1f, themeColor.y+0.1f, themeColor.z+0.1f, themeOverlayAlpha));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ImVec4(themeColor.x+0.15f, themeColor.y+0.15f, themeColor.z+0.15f, themeOverlayAlpha));
@@ -442,13 +471,25 @@ void EGL::EglThread() {
         input->g_window = g_window = ImGui::GetCurrentWindow();
         windowPos = ImGui::GetWindowPos();
 
+        // 绘制标题栏（可拖动）
+        ImVec2 titleBarMin = ImGui::GetWindowPos();
+        ImVec2 titleBarMax = ImVec2(titleBarMin.x + scaledSize.x, titleBarMin.y + 35);
+        ImDrawList* winDrawList = ImGui::GetWindowDrawList();
+        winDrawList->AddRectFilled(titleBarMin, titleBarMax, ImGui::ColorConvertFloat4ToU32(themeColorWithAlpha), globalRounding * 2.0f, ImDrawFlags_RoundCornersTop);
+        
+        ImVec2 titleTextPos = ImVec2(titleBarMin.x + scaledSize.x * 0.5f - ImGui::CalcTextSize(windowTitle).x * 0.5f, titleBarMin.y + 8);
+        winDrawList->AddText(titleTextPos, IM_COL32(255, 255, 255, 255), windowTitle);
+        
+        // 让标题栏可拖动
+        ImGui::SetCursorPosY(40);
+
         ImVec2 winPos = ImGui::GetWindowPos();
         ImVec2 winSize = ImGui::GetWindowSize();
         float leftPanelWidth = 200.0f;
         float padding = 30.0f;
-        float rightPanelWidth = winSize.x - leftPanelWidth - 50.0f;
+        float rightPanelWidth = winSize.x - leftPanelWidth - 60.0f;
         float contentAvailWidth = rightPanelWidth - padding;
-        float contentHeight = winSize.y - 130.0f;
+        float contentHeight = winSize.y - 140.0f;
 
         float animSpeed = 0.15f;
 
@@ -479,8 +520,8 @@ void EGL::EglThread() {
         // 顶部导航栏
         io->FontGlobalScale = 1.0f;
         
-        float tabHeight = 40.0f;
-        float tabWidth = (winSize.x - 50.0f) / tabCount;
+        float tabHeight = 35.0f;
+        float tabWidth = (winSize.x - 60.0f) / tabCount;
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 themeColorU32 = ImGui::ColorConvertFloat4ToU32(themeColorWithAlpha);
@@ -508,12 +549,12 @@ void EGL::EglThread() {
             // 绘制底部指示器
             if (tabAnimProgress[i] > 0.0f) {
                 ImVec2 screenPos = ImGui::GetItemRectMin();
-                float maxIndicatorWidth = tabWidth * 0.6f;
+                float maxIndicatorWidth = tabWidth * 0.5f;
                 float currentIndicatorWidth = maxIndicatorWidth * tabAnimProgress[i];
-                float indicatorHeight = 5.0f;
+                float indicatorHeight = 4.0f;
                 float centerX = screenPos.x + tabWidth * 0.5f;
                 float indicatorX = centerX - currentIndicatorWidth * 0.5f;
-                float indicatorY = navBaseY + tabHeight + 3.0f;
+                float indicatorY = navBaseY + tabHeight + 2.0f;
                 
                 drawList->AddRectFilled(
                     ImVec2(indicatorX, indicatorY),
@@ -525,32 +566,18 @@ void EGL::EglThread() {
         ImGui::Spacing();
         ImGui::Spacing();
 
-        // 菜单开关按钮
-        ImGui::SameLine(winSize.x - 120.0f);
-        if (ImGui::Button(isChinese ? "隐藏菜单" : "Hide Menu", ImVec2(100, 30))) {
-            menuOpen = !menuOpen;
-        }
-
         // 左侧面板 - 带滚动条
         io->FontGlobalScale = 1.0f;
         
-        ImGui::SetCursorPosX(5.0f);
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+        ImGui::SetCursorPosX(10.0f);
         
-        float leftButtonWidth = leftPanelWidth - 50.0f;
-        float moduleButtonHeight = 40.0f;
+        // 增加底部padding确保可以滚动到底
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 20.0f));
+        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 15.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+        ImGui::PopStyleVar();
         
-        // 模块名称
-        const char* combatModulesEN[] = {"KillAura", "AutoClicker", "Criticals", "Velocity", "Reach", "AimAssist", "BowAimbot", "AutoArmor", "AutoSoup", "AutoPot"};
-        const char* combatModulesCN[] = {"杀戮光环", "自动点击", "暴击", "速度减免", "距离加成", "瞄准辅助", "弓箭瞄准", "自动盔甲", "自动喝汤", "自动药水"};
-        const char* moveModulesEN[] = {"Speed", "Fly", "LongJump", "HighJump", "Step", "NoSlow", "Sprint", "Strafe", "Jesus", "Spider"};
-        const char* moveModulesCN[] = {"速度", "飞行", "远跳", "高跳", "台阶", "无减速", "自动疾跑", "平移", "水上行走", "爬墙"};
-        const char* worldModulesEN[] = {"Scaffold", "Tower", "Nuker", "FastPlace", "AutoTool", "ChestStealer", "InventoryCleaner", "FastBreak", "Eagle", "ClickTP"};
-        const char* worldModulesCN[] = {"脚手架", "快速搭高", "破坏者", "快速放置", "自动工具", "箱子偷窃", "背包清理", "快速破坏", "鹰眼", "点击传送"};
-        const char* playerModulesEN[] = {"NoFall", "AntiFire", "FastEat", "AutoRespawn", "AutoFish", "Freecam", "Blink", "AntiAFK", "AutoJoin", "NameProtect"};
-        const char* playerModulesCN[] = {"无摔落", "抗火", "快速进食", "自动重生", "自动钓鱼", "自由视角", "闪烁", "反挂机", "自动加入", "名称保护"};
-        const char* visualModulesEN[] = {"Interface", "ESP", "Tracers", "Nametags", "Chams", "XRay", "Fullbright", "ItemESP", "StorageESP", "Waypoints"};
-        const char* visualModulesCN[] = {"界面", "透视", "追踪线", "名称标签", "染色", "矿物透视", "全亮", "物品透视", "容器透视", "路径点"};
+        float leftButtonWidth = leftPanelWidth - 45.0f;
+        float moduleButtonHeight = 45.0f;
         
         const char** currentModules = nullptr;
         const char** currentModulesCN = nullptr;
@@ -587,7 +614,18 @@ void EGL::EglThread() {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
+            
+            // 选中的模块使用辉光效果
+            if (i == selectedModule) {
+                ImVec2 textPos = ImGui::GetCursorScreenPos();
+                textPos.x += offsetX + 10;
+                textPos.y += 12;
+                const char* moduleLabel = isChinese ? currentModulesCN[i] : currentModules[i];
+                DrawGlowText(drawList, textPos, IM_COL32(255, 255, 255, 255), moduleLabel, 1.2f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, opacity));
+            }
             
             ImVec2 buttonPos = ImGui::GetCursorPos();
             buttonPos.x += offsetX;
@@ -602,23 +640,30 @@ void EGL::EglThread() {
             ImGui::Spacing();
         }
 
+        // 添加底部空间确保可以滚动到底
+        ImGui::Dummy(ImVec2(0, 30));
+        
         ImGui::EndChild();
 
         ImGui::SameLine();
         
         // 绘制竖直分隔线
-        float separatorX = ImGui::GetCursorScreenPos().x - 15.0f;
+        float separatorX = ImGui::GetCursorScreenPos().x - 10.0f;
         float separatorY = ImGui::GetCursorScreenPos().y;
         drawList->AddLine(
             ImVec2(separatorX, separatorY),
             ImVec2(separatorX, separatorY + contentHeight),
-            IM_COL32(255, 255, 255, 100),
-            2.0f
+            IM_COL32(255, 255, 255, 60),
+            1.0f
         );
 
         // 右侧面板 - 带滚动条
         io->FontGlobalScale = fontScale;
+        
+        // 增加底部padding确保可以滚动到底
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 20.0f));
         ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+        ImGui::PopStyleVar();
         
         ImU32 fadeColor = IM_COL32(255, 255, 255, (int)(255 * contentFadeProgress));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, contentFadeProgress));
@@ -632,32 +677,67 @@ void EGL::EglThread() {
             }
         };
         
-        auto DrawModuleSetting = [&](const char* name, int idx, bool isToggle, float* fval = nullptr, float fmin = 0, float fmax = 0, int* ival = nullptr, int imin = 0, int imax = 0) {
+        // 绘制设置项 - 重新设计布局
+        auto DrawSettingRow = [&](const char* name, int idx, bool isToggle, float* fval = nullptr, float fmin = 0, float fmax = 0, int* ival = nullptr, int imin = 0, int imax = 0) {
+            float availWidth = ImGui::GetContentRegionAvail().x;
+            float toggleWidth = 60.0f;
+            float sliderWidth = 150.0f;
+            float valueWidth = 50.0f;
+            float spacing = 15.0f;
+            
+            // 设置名称
             ImGui::Text("%s", name);
-            ImGui::SameLine(contentAvailWidth - 150);
             
-            // 控制绑定按钮
-            char bindLabel[32];
-            snprintf(bindLabel, sizeof(bindLabel), "%s##bind%d", currentBinds[idx], idx);
-            if (ImGui::Button(bindLabel, ImVec2(70, 28))) {
-                // 绑定按键逻辑
-            }
-            
-            ImGui::SameLine(contentAvailWidth - 70);
+            float currentX = ImGui::GetCursorPosX();
+            float nameWidth = ImGui::CalcTextSize(name).x;
             
             if (isToggle) {
-                if (AnimatedToggle("##toggle", &currentEnabled[idx], 60, 32, toggleAnimProgress[moduleOffset + idx])) {}
-            } else if (fval != nullptr) {
-                UpdateSliderAnim(idx, *fval);
-                ImGui::Text("%.1f", sliderDisplayValue[idx]);
-                ImGui::SameLine(contentAvailWidth - 50);
-                AnimatedSliderFloat("##slider", fval, fmin, fmax, 4.0f, 35.0f, sliderDisplayValue[idx]);
-            } else if (ival != nullptr) {
-                UpdateSliderAnim(idx, (float)*ival);
-                ImGui::Text("%d", (int)sliderDisplayValue[idx]);
-                ImGui::SameLine(contentAvailWidth - 50);
-                AnimatedSliderInt("##slider", ival, imin, imax, 4.0f, 35.0f, sliderDisplayValue[idx]);
+                ImGui::SameLine(availWidth - toggleWidth);
+                if (AnimatedToggle("##toggle", &currentEnabled[idx], 60, 30, toggleAnimProgress[moduleOffset + idx])) {}
+            } else {
+                // 数值显示
+                ImGui::SameLine(availWidth - sliderWidth - valueWidth - spacing * 2);
+                if (fval != nullptr) {
+                    UpdateSliderAnim(idx, *fval);
+                    ImGui::Text("%.1f", sliderDisplayValue[idx]);
+                } else if (ival != nullptr) {
+                    UpdateSliderAnim(idx, (float)*ival);
+                    ImGui::Text("%d", (int)sliderDisplayValue[idx]);
+                }
+                
+                // 滑块
+                ImGui::SameLine(availWidth - sliderWidth - spacing);
+                if (fval != nullptr) {
+                    AnimatedSliderFloat("##slider", fval, fmin, fmax, 4.0f, 30.0f, sliderDisplayValue[idx]);
+                } else if (ival != nullptr) {
+                    AnimatedSliderInt("##slider", ival, imin, imax, 4.0f, 30.0f, sliderDisplayValue[idx]);
+                }
             }
+            ImGui::Spacing();
+            ImGui::Spacing();
+        };
+        
+        // 绘制按键绑定区域（单独一行）
+        auto DrawKeyBind = [&](int idx) {
+            ImGui::Text(isChinese ? "按键绑定" : "Key Bind");
+            ImGui::SameLine(150);
+            
+            char bindButtonLabel[64];
+            if (isWaitingForBind && bindingModuleIdx == idx) {
+                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", isChinese ? "按任意键..." : "Press any key...");
+            } else {
+                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", currentBinds[idx]);
+            }
+            
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
+            if (ImGui::Button(bindButtonLabel, ImVec2(100, 28))) {
+                bindingModuleIdx = idx;
+                isWaitingForBind = true;
+            }
+            ImGui::PopStyleColor(2);
+            ImGui::Spacing();
+            ImGui::Separator();
             ImGui::Spacing();
         };
 
@@ -668,54 +748,91 @@ void EGL::EglThread() {
                     ImGui::Text(isChinese ? "杀戮光环" : "KillAura");
                     ImGui::Separator();
                     ImGui::Spacing();
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 0, true);
-                    DrawModuleSetting(isChinese ? "范围" : "Range", 0, false, &combatValues[0][0], 1.0f, 6.0f);
-                    DrawModuleSetting(isChinese ? "CPS" : "CPS", 0, false, nullptr, 0, 0, &combatInts[0][0], 1, 20);
-                    DrawModuleSetting(isChinese ? "视野" : "FOV", 0, false, &combatValues[0][1], 30.0f, 360.0f);
-                    DrawModuleSetting(isChinese ? "自动格挡" : "Auto Block", 0, true);
-                    DrawModuleSetting(isChinese ? "旋转" : "Rotation", 0, true);
-                    DrawModuleSetting(isChinese ? "目标玩家" : "Target Players", 0, true);
-                    DrawModuleSetting(isChinese ? "目标怪物" : "Target Mobs", 0, true);
-                    DrawModuleSetting(isChinese ? "目标动物" : "Target Animals", 0, true);
+                    DrawKeyBind(0);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 0, true);
+                    DrawSettingRow(isChinese ? "范围" : "Range", 0, false, &combatValues[0][0], 1.0f, 6.0f);
+                    DrawSettingRow(isChinese ? "CPS" : "CPS", 0, false, nullptr, 0, 0, &combatInts[0][0], 1, 20);
+                    DrawSettingRow(isChinese ? "视野" : "FOV", 0, false, &combatValues[0][1], 30.0f, 360.0f);
+                    DrawSettingRow(isChinese ? "自动格挡" : "Auto Block", 0, true);
+                    DrawSettingRow(isChinese ? "旋转" : "Rotation", 0, true);
+                    DrawSettingRow(isChinese ? "目标玩家" : "Target Players", 0, true);
+                    DrawSettingRow(isChinese ? "目标怪物" : "Target Mobs", 0, true);
+                    DrawSettingRow(isChinese ? "目标动物" : "Target Animals", 0, true);
                     break;
                 case 1: // AutoClicker
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 1, true);
-                    DrawModuleSetting(isChinese ? "CPS" : "CPS", 1, false, nullptr, 0, 0, &combatInts[1][0], 1, 20);
-                    DrawModuleSetting(isChinese ? "随机化" : "Randomize", 1, true);
+                    ImGui::Text(isChinese ? "自动点击" : "AutoClicker");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(1);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 1, true);
+                    DrawSettingRow(isChinese ? "CPS" : "CPS", 1, false, nullptr, 0, 0, &combatInts[1][0], 1, 20);
+                    DrawSettingRow(isChinese ? "随机化" : "Randomize", 1, true);
                     break;
                 case 2: // Criticals
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 2, true);
-                    DrawModuleSetting(isChinese ? "模式" : "Mode", 2, false, &combatValues[2][0], 0, 2);
+                    ImGui::Text(isChinese ? "暴击" : "Criticals");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(2);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 2, true);
+                    DrawSettingRow(isChinese ? "模式" : "Mode", 2, false, &combatValues[2][0], 0, 2);
                     break;
                 case 3: // Velocity
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 3, true);
-                    DrawModuleSetting(isChinese ? "水平" : "Horizontal", 3, false, &combatValues[3][0], 0.0f, 100.0f);
-                    DrawModuleSetting(isChinese ? "垂直" : "Vertical", 3, false, &combatValues[3][1], 0.0f, 100.0f);
+                    ImGui::Text(isChinese ? "速度减免" : "Velocity");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(3);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 3, true);
+                    DrawSettingRow(isChinese ? "水平" : "Horizontal", 3, false, &combatValues[3][0], 0.0f, 100.0f);
+                    DrawSettingRow(isChinese ? "垂直" : "Vertical", 3, false, &combatValues[3][1], 0.0f, 100.0f);
                     break;
                 case 4: // Reach
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 4, true);
-                    DrawModuleSetting(isChinese ? "距离" : "Distance", 4, false, &combatValues[4][0], 3.0f, 6.0f);
+                    ImGui::Text(isChinese ? "距离加成" : "Reach");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(4);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 4, true);
+                    DrawSettingRow(isChinese ? "距离" : "Distance", 4, false, &combatValues[4][0], 3.0f, 6.0f);
                     break;
                 case 5: // AimAssist
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 5, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 5, false, &combatValues[5][0], 1.0f, 10.0f);
-                    DrawModuleSetting(isChinese ? "范围" : "Range", 5, false, &combatValues[5][1], 1.0f, 6.0f);
+                    ImGui::Text(isChinese ? "瞄准辅助" : "AimAssist");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(5);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 5, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 5, false, &combatValues[5][0], 1.0f, 10.0f);
+                    DrawSettingRow(isChinese ? "范围" : "Range", 5, false, &combatValues[5][1], 1.0f, 6.0f);
                     break;
                 case 6: // BowAimbot
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 6, true);
-                    DrawModuleSetting(isChinese ? "预测" : "Prediction", 6, true);
+                    ImGui::Text(isChinese ? "弓箭瞄准" : "BowAimbot");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(6);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 6, true);
+                    DrawSettingRow(isChinese ? "预测" : "Prediction", 6, true);
                     break;
                 case 7: // AutoArmor
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 7, true);
-                    DrawModuleSetting(isChinese ? "延迟" : "Delay", 7, false, nullptr, 0, 0, &combatInts[7][0], 0, 10);
+                    ImGui::Text(isChinese ? "自动盔甲" : "AutoArmor");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(7);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 7, true);
+                    DrawSettingRow(isChinese ? "延迟" : "Delay", 7, false, nullptr, 0, 0, &combatInts[7][0], 0, 10);
                     break;
                 case 8: // AutoSoup
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 8, true);
-                    DrawModuleSetting(isChinese ? "生命值" : "Health", 8, false, &combatValues[8][0], 1.0f, 20.0f);
+                    ImGui::Text(isChinese ? "自动喝汤" : "AutoSoup");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(8);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 8, true);
+                    DrawSettingRow(isChinese ? "生命值" : "Health", 8, false, &combatValues[8][0], 1.0f, 20.0f);
                     break;
                 case 9: // AutoPot
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 9, true);
-                    DrawModuleSetting(isChinese ? "生命值" : "Health", 9, false, &combatValues[9][0], 1.0f, 20.0f);
+                    ImGui::Text(isChinese ? "自动药水" : "AutoPot");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(9);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 9, true);
+                    DrawSettingRow(isChinese ? "生命值" : "Health", 9, false, &combatValues[9][0], 1.0f, 20.0f);
                     break;
             }
         }
@@ -726,47 +843,84 @@ void EGL::EglThread() {
                     ImGui::Text(isChinese ? "速度" : "Speed");
                     ImGui::Separator();
                     ImGui::Spacing();
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 0, true);
-                    DrawModuleSetting(isChinese ? "速度值" : "Speed Value", 0, false, &moveValues[0][0], 0.5f, 5.0f);
-                    DrawModuleSetting(isChinese ? "模式" : "Mode", 0, false, &moveValues[0][1], 0, 3);
+                    DrawKeyBind(0);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 0, true);
+                    DrawSettingRow(isChinese ? "速度值" : "Speed Value", 0, false, &moveValues[0][0], 0.5f, 5.0f);
+                    DrawSettingRow(isChinese ? "模式" : "Mode", 0, false, &moveValues[0][1], 0, 3);
                     break;
                 case 1: // Fly
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 1, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 1, false, &moveValues[1][0], 0.1f, 5.0f);
-                    DrawModuleSetting(isChinese ? "垂直速度" : "Vertical", 1, false, &moveValues[1][1], 0.1f, 2.0f);
+                    ImGui::Text(isChinese ? "飞行" : "Fly");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(1);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 1, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 1, false, &moveValues[1][0], 0.1f, 5.0f);
+                    DrawSettingRow(isChinese ? "垂直速度" : "Vertical", 1, false, &moveValues[1][1], 0.1f, 2.0f);
                     break;
                 case 2: // LongJump
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 2, true);
-                    DrawModuleSetting(isChinese ? "力度" : "Power", 2, false, &moveValues[2][0], 1.0f, 10.0f);
+                    ImGui::Text(isChinese ? "远跳" : "LongJump");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(2);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 2, true);
+                    DrawSettingRow(isChinese ? "力度" : "Power", 2, false, &moveValues[2][0], 1.0f, 10.0f);
                     break;
                 case 3: // HighJump
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 3, true);
-                    DrawModuleSetting(isChinese ? "高度" : "Height", 3, false, &moveValues[3][0], 1.0f, 5.0f);
+                    ImGui::Text(isChinese ? "高跳" : "HighJump");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(3);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 3, true);
+                    DrawSettingRow(isChinese ? "高度" : "Height", 3, false, &moveValues[3][0], 1.0f, 5.0f);
                     break;
                 case 4: // Step
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 4, true);
-                    DrawModuleSetting(isChinese ? "高度" : "Height", 4, false, &moveValues[4][0], 0.5f, 10.0f);
+                    ImGui::Text(isChinese ? "台阶" : "Step");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(4);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 4, true);
+                    DrawSettingRow(isChinese ? "高度" : "Height", 4, false, &moveValues[4][0], 0.5f, 10.0f);
                     break;
                 case 5: // NoSlow
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 5, true);
-                    DrawModuleSetting(isChinese ? "食物减速" : "Food", 5, true);
-                    DrawModuleSetting(isChinese ? "物品减速" : "Item", 5, true);
+                    ImGui::Text(isChinese ? "无减速" : "NoSlow");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(5);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 5, true);
+                    DrawSettingRow(isChinese ? "食物减速" : "Food", 5, true);
+                    DrawSettingRow(isChinese ? "物品减速" : "Item", 5, true);
                     break;
                 case 6: // Sprint
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 6, true);
-                    DrawModuleSetting(isChinese ? "所有方向" : "All Directions", 6, true);
+                    ImGui::Text(isChinese ? "自动疾跑" : "Sprint");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(6);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 6, true);
+                    DrawSettingRow(isChinese ? "所有方向" : "All Directions", 6, true);
                     break;
                 case 7: // Strafe
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 7, true);
-                    DrawModuleSetting(isChinese ? "强度" : "Strength", 7, false, &moveValues[7][0], 0.1f, 1.0f);
+                    ImGui::Text(isChinese ? "平移" : "Strafe");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(7);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 7, true);
+                    DrawSettingRow(isChinese ? "强度" : "Strength", 7, false, &moveValues[7][0], 0.1f, 1.0f);
                     break;
                 case 8: // Jesus
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 8, true);
-                    DrawModuleSetting(isChinese ? "模式" : "Mode", 8, false, &moveValues[8][0], 0, 2);
+                    ImGui::Text(isChinese ? "水上行走" : "Jesus");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(8);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 8, true);
+                    DrawSettingRow(isChinese ? "模式" : "Mode", 8, false, &moveValues[8][0], 0, 2);
                     break;
                 case 9: // Spider
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 9, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 9, false, &moveValues[9][0], 0.1f, 1.0f);
+                    ImGui::Text(isChinese ? "爬墙" : "Spider");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(9);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 9, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 9, false, &moveValues[9][0], 0.1f, 1.0f);
                     break;
             }
         }
@@ -777,45 +931,82 @@ void EGL::EglThread() {
                     ImGui::Text(isChinese ? "脚手架" : "Scaffold");
                     ImGui::Separator();
                     ImGui::Spacing();
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 0, true);
-                    DrawModuleSetting(isChinese ? "范围" : "Range", 0, false, &worldValues[0][0], 1.0f, 6.0f);
-                    DrawModuleSetting(isChinese ? "延迟" : "Delay", 0, false, nullptr, 0, 0, &worldInts[0][0], 0, 5);
+                    DrawKeyBind(0);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 0, true);
+                    DrawSettingRow(isChinese ? "范围" : "Range", 0, false, &worldValues[0][0], 1.0f, 6.0f);
+                    DrawSettingRow(isChinese ? "延迟" : "Delay", 0, false, nullptr, 0, 0, &worldInts[0][0], 0, 5);
                     break;
                 case 1: // Tower
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 1, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 1, false, &worldValues[1][0], 0.1f, 2.0f);
+                    ImGui::Text(isChinese ? "快速搭高" : "Tower");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(1);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 1, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 1, false, &worldValues[1][0], 0.1f, 2.0f);
                     break;
                 case 2: // Nuker
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 2, true);
-                    DrawModuleSetting(isChinese ? "范围" : "Range", 2, false, &worldValues[2][0], 1.0f, 6.0f);
+                    ImGui::Text(isChinese ? "破坏者" : "Nuker");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(2);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 2, true);
+                    DrawSettingRow(isChinese ? "范围" : "Range", 2, false, &worldValues[2][0], 1.0f, 6.0f);
                     break;
                 case 3: // FastPlace
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 3, true);
-                    DrawModuleSetting(isChinese ? "延迟" : "Delay", 3, false, nullptr, 0, 0, &worldInts[3][0], 0, 4);
+                    ImGui::Text(isChinese ? "快速放置" : "FastPlace");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(3);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 3, true);
+                    DrawSettingRow(isChinese ? "延迟" : "Delay", 3, false, nullptr, 0, 0, &worldInts[3][0], 0, 4);
                     break;
                 case 4: // AutoTool
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 4, true);
-                    DrawModuleSetting(isChinese ? "自动切换" : "Auto Switch", 4, true);
+                    ImGui::Text(isChinese ? "自动工具" : "AutoTool");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(4);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 4, true);
+                    DrawSettingRow(isChinese ? "自动切换" : "Auto Switch", 4, true);
                     break;
                 case 5: // ChestStealer
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 5, true);
-                    DrawModuleSetting(isChinese ? "延迟" : "Delay", 5, false, nullptr, 0, 0, &worldInts[5][0], 0, 10);
+                    ImGui::Text(isChinese ? "箱子偷窃" : "ChestStealer");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(5);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 5, true);
+                    DrawSettingRow(isChinese ? "延迟" : "Delay", 5, false, nullptr, 0, 0, &worldInts[5][0], 0, 10);
                     break;
                 case 6: // InventoryCleaner
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 6, true);
-                    DrawModuleSetting(isChinese ? "保留工具" : "Keep Tools", 6, true);
+                    ImGui::Text(isChinese ? "背包清理" : "InventoryCleaner");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(6);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 6, true);
+                    DrawSettingRow(isChinese ? "保留工具" : "Keep Tools", 6, true);
                     break;
                 case 7: // FastBreak
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 7, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 7, false, &worldValues[7][0], 1.0f, 5.0f);
+                    ImGui::Text(isChinese ? "快速破坏" : "FastBreak");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(7);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 7, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 7, false, &worldValues[7][0], 1.0f, 5.0f);
                     break;
                 case 8: // Eagle
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 8, true);
-                    DrawModuleSetting(isChinese ? "边缘跳跃" : "Edge Jump", 8, true);
+                    ImGui::Text(isChinese ? "鹰眼" : "Eagle");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(8);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 8, true);
+                    DrawSettingRow(isChinese ? "边缘跳跃" : "Edge Jump", 8, true);
                     break;
                 case 9: // ClickTP
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 9, true);
-                    DrawModuleSetting(isChinese ? "最大距离" : "Max Distance", 9, false, &worldValues[9][0], 5.0f, 100.0f);
+                    ImGui::Text(isChinese ? "点击传送" : "ClickTP");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(9);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 9, true);
+                    DrawSettingRow(isChinese ? "最大距离" : "Max Distance", 9, false, &worldValues[9][0], 5.0f, 100.0f);
                     break;
             }
         }
@@ -826,44 +1017,81 @@ void EGL::EglThread() {
                     ImGui::Text(isChinese ? "无摔落" : "NoFall");
                     ImGui::Separator();
                     ImGui::Spacing();
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 0, true);
-                    DrawModuleSetting(isChinese ? "模式" : "Mode", 0, false, &playerValues[0][0], 0, 2);
+                    DrawKeyBind(0);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 0, true);
+                    DrawSettingRow(isChinese ? "模式" : "Mode", 0, false, &playerValues[0][0], 0, 2);
                     break;
                 case 1: // AntiFire
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 1, true);
-                    DrawModuleSetting(isChinese ? "自动喝水" : "Auto Water", 1, true);
+                    ImGui::Text(isChinese ? "抗火" : "AntiFire");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(1);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 1, true);
+                    DrawSettingRow(isChinese ? "自动喝水" : "Auto Water", 1, true);
                     break;
                 case 2: // FastEat
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 2, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 2, false, &playerValues[2][0], 1.0f, 10.0f);
+                    ImGui::Text(isChinese ? "快速进食" : "FastEat");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(2);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 2, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 2, false, &playerValues[2][0], 1.0f, 10.0f);
                     break;
                 case 3: // AutoRespawn
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 3, true);
-                    DrawModuleSetting(isChinese ? "延迟" : "Delay", 3, false, nullptr, 0, 0, &playerInts[3][0], 0, 10);
+                    ImGui::Text(isChinese ? "自动重生" : "AutoRespawn");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(3);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 3, true);
+                    DrawSettingRow(isChinese ? "延迟" : "Delay", 3, false, nullptr, 0, 0, &playerInts[3][0], 0, 10);
                     break;
                 case 4: // AutoFish
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 4, true);
-                    DrawModuleSetting(isChinese ? "自动投掷" : "Auto Cast", 4, true);
+                    ImGui::Text(isChinese ? "自动钓鱼" : "AutoFish");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(4);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 4, true);
+                    DrawSettingRow(isChinese ? "自动投掷" : "Auto Cast", 4, true);
                     break;
                 case 5: // Freecam
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 5, true);
-                    DrawModuleSetting(isChinese ? "速度" : "Speed", 5, false, &playerValues[5][0], 0.1f, 5.0f);
+                    ImGui::Text(isChinese ? "自由视角" : "Freecam");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(5);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 5, true);
+                    DrawSettingRow(isChinese ? "速度" : "Speed", 5, false, &playerValues[5][0], 0.1f, 5.0f);
                     break;
                 case 6: // Blink
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 6, true);
-                    DrawModuleSetting(isChinese ? "脉冲" : "Pulse", 6, true);
+                    ImGui::Text(isChinese ? "闪烁" : "Blink");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(6);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 6, true);
+                    DrawSettingRow(isChinese ? "脉冲" : "Pulse", 6, true);
                     break;
                 case 7: // AntiAFK
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 7, true);
-                    DrawModuleSetting(isChinese ? "间隔" : "Interval", 7, false, nullptr, 0, 0, &playerInts[7][0], 10, 300);
+                    ImGui::Text(isChinese ? "反挂机" : "AntiAFK");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(7);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 7, true);
+                    DrawSettingRow(isChinese ? "间隔" : "Interval", 7, false, nullptr, 0, 0, &playerInts[7][0], 10, 300);
                     break;
                 case 8: // AutoJoin
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 8, true);
-                    DrawModuleSetting(isChinese ? "服务器" : "Server", 8, false, nullptr, 0, 0, &playerInts[8][0], 0, 5);
+                    ImGui::Text(isChinese ? "自动加入" : "AutoJoin");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(8);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 8, true);
+                    DrawSettingRow(isChinese ? "服务器" : "Server", 8, false, nullptr, 0, 0, &playerInts[8][0], 0, 5);
                     break;
                 case 9: // NameProtect
-                    DrawModuleSetting(isChinese ? "启用" : "Enabled", 9, true);
-                    DrawModuleSetting(isChinese ? "自定义名称" : "Custom Name", 9, true);
+                    ImGui::Text(isChinese ? "名称保护" : "NameProtect");
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    DrawKeyBind(9);
+                    DrawSettingRow(isChinese ? "启用" : "Enabled", 9, true);
+                    DrawSettingRow(isChinese ? "自定义名称" : "Custom Name", 9, true);
                     break;
             }
         }
@@ -877,33 +1105,41 @@ void EGL::EglThread() {
                 
                 ImGui::Text(isChinese ? "启用" : "Enabled");
                 ImGui::SameLine(contentAvailWidth - 70);
-                if (AnimatedToggle("##interface_enabled", &visualEnabled[0], 60, 32, toggleAnimProgress[40])) {}
+                if (AnimatedToggle("##interface_enabled", &visualEnabled[0], 60, 30, toggleAnimProgress[40])) {}
+                ImGui::Spacing();
                 ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "背景透明度" : "Background Alpha");
-                ImGui::SameLine(contentAvailWidth - 50);
+                ImGui::SameLine(contentAvailWidth - 200);
                 UpdateSliderAnim(40, bgAlpha);
                 ImGui::Text("%.2f", sliderDisplayValue[40]);
-                AnimatedSliderFloat("##bg_alpha", &bgAlpha, 0.1f, 1.0f, 4.0f, 30.0f, sliderDisplayValue[40]);
+                ImGui::SameLine(contentAvailWidth - 150);
+                AnimatedSliderFloat("##bg_alpha", &bgAlpha, 0.1f, 1.0f, 4.0f, 28.0f, sliderDisplayValue[40]);
+                ImGui::Spacing();
                 ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "主题颜色" : "Theme Color");
                 ImGui::SameLine(contentAvailWidth - 100);
                 ImGui::ColorEdit3("##theme_color", (float*)&themeColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
                 ImGui::Spacing();
+                ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "主题透明度" : "Theme Alpha");
-                ImGui::SameLine(contentAvailWidth - 50);
+                ImGui::SameLine(contentAvailWidth - 200);
                 UpdateSliderAnim(41, themeOverlayAlpha);
                 ImGui::Text("%.2f", sliderDisplayValue[41]);
-                AnimatedSliderFloat("##theme_alpha", &themeOverlayAlpha, 0.1f, 1.0f, 4.0f, 30.0f, sliderDisplayValue[41]);
+                ImGui::SameLine(contentAvailWidth - 150);
+                AnimatedSliderFloat("##theme_alpha", &themeOverlayAlpha, 0.1f, 1.0f, 4.0f, 28.0f, sliderDisplayValue[41]);
+                ImGui::Spacing();
                 ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "全局圆角" : "Global Rounding");
-                ImGui::SameLine(contentAvailWidth - 50);
+                ImGui::SameLine(contentAvailWidth - 200);
                 UpdateSliderAnim(42, globalRounding);
                 ImGui::Text("%.0f", sliderDisplayValue[42]);
-                AnimatedSliderFloat("##global_rounding", &globalRounding, 0.0f, 20.0f, 4.0f, 30.0f, sliderDisplayValue[42]);
+                ImGui::SameLine(contentAvailWidth - 150);
+                AnimatedSliderFloat("##global_rounding", &globalRounding, 0.0f, 20.0f, 4.0f, 28.0f, sliderDisplayValue[42]);
+                ImGui::Spacing();
                 ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "客户端名称" : "Client Name");
@@ -912,10 +1148,11 @@ void EGL::EglThread() {
                 ImGui::InputText("##client_name", clientName, sizeof(clientName));
                 ImGui::PopItemWidth();
                 ImGui::Spacing();
+                ImGui::Spacing();
                 
                 ImGui::Text(isChinese ? "语言" : "Language");
-                ImGui::SameLine(contentAvailWidth - 150);
-                if (ImGui::Button(isChinese ? "中文" : "English", ImVec2(120, 30))) {
+                ImGui::SameLine(contentAvailWidth - 120);
+                if (ImGui::Button(isChinese ? "切换到英文" : "Switch to CN", ImVec2(110, 28))) {
                     isChinese = !isChinese;
                 }
             }
@@ -926,43 +1163,76 @@ void EGL::EglThread() {
                         ImGui::Text(isChinese ? "透视" : "ESP");
                         ImGui::Separator();
                         ImGui::Spacing();
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 1, true);
-                        DrawModuleSetting(isChinese ? "模式" : "Mode", 1, false, &visualValues[1][0], 0, 3);
-                        DrawModuleSetting(isChinese ? "玩家" : "Players", 1, true);
-                        DrawModuleSetting(isChinese ? "怪物" : "Mobs", 1, true);
+                        DrawKeyBind(1);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 1, true);
+                        DrawSettingRow(isChinese ? "模式" : "Mode", 1, false, &visualValues[1][0], 0, 3);
+                        DrawSettingRow(isChinese ? "玩家" : "Players", 1, true);
+                        DrawSettingRow(isChinese ? "怪物" : "Mobs", 1, true);
                         break;
                     case 2: // Tracers
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 2, true);
-                        DrawModuleSetting(isChinese ? "宽度" : "Width", 2, false, &visualValues[2][0], 0.5f, 3.0f);
+                        ImGui::Text(isChinese ? "追踪线" : "Tracers");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(2);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 2, true);
+                        DrawSettingRow(isChinese ? "宽度" : "Width", 2, false, &visualValues[2][0], 0.5f, 3.0f);
                         break;
                     case 3: // Nametags
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 3, true);
-                        DrawModuleSetting(isChinese ? "缩放" : "Scale", 3, false, &visualValues[3][0], 0.5f, 2.0f);
+                        ImGui::Text(isChinese ? "名称标签" : "Nametags");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(3);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 3, true);
+                        DrawSettingRow(isChinese ? "缩放" : "Scale", 3, false, &visualValues[3][0], 0.5f, 2.0f);
                         break;
                     case 4: // Chams
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 4, true);
-                        DrawModuleSetting(isChinese ? "颜色" : "Color", 4, true);
+                        ImGui::Text(isChinese ? "染色" : "Chams");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(4);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 4, true);
+                        DrawSettingRow(isChinese ? "颜色" : "Color", 4, true);
                         break;
                     case 5: // XRay
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 5, true);
-                        DrawModuleSetting(isChinese ? "透明度" : "Opacity", 5, false, &visualValues[5][0], 0.0f, 1.0f);
+                        ImGui::Text(isChinese ? "矿物透视" : "XRay");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(5);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 5, true);
+                        DrawSettingRow(isChinese ? "透明度" : "Opacity", 5, false, &visualValues[5][0], 0.0f, 1.0f);
                         break;
                     case 6: // Fullbright
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 6, true);
-                        DrawModuleSetting(isChinese ? "亮度" : "Brightness", 6, false, &visualValues[6][0], 1.0f, 15.0f);
+                        ImGui::Text(isChinese ? "全亮" : "Fullbright");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(6);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 6, true);
+                        DrawSettingRow(isChinese ? "亮度" : "Brightness", 6, false, &visualValues[6][0], 1.0f, 15.0f);
                         break;
                     case 7: // ItemESP
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 7, true);
-                        DrawModuleSetting(isChinese ? "名称" : "Name", 7, true);
+                        ImGui::Text(isChinese ? "物品透视" : "ItemESP");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(7);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 7, true);
+                        DrawSettingRow(isChinese ? "名称" : "Name", 7, true);
                         break;
                     case 8: // StorageESP
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 8, true);
-                        DrawModuleSetting(isChinese ? "箱子" : "Chest", 8, true);
-                        DrawModuleSetting(isChinese ? "熔炉" : "Furnace", 8, true);
+                        ImGui::Text(isChinese ? "容器透视" : "StorageESP");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(8);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 8, true);
+                        DrawSettingRow(isChinese ? "箱子" : "Chest", 8, true);
+                        DrawSettingRow(isChinese ? "熔炉" : "Furnace", 8, true);
                         break;
                     case 9: // Waypoints
-                        DrawModuleSetting(isChinese ? "启用" : "Enabled", 9, true);
-                        DrawModuleSetting(isChinese ? "距离" : "Distance", 9, false, &visualValues[9][0], 100.0f, 10000.0f);
+                        ImGui::Text(isChinese ? "路径点" : "Waypoints");
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        DrawKeyBind(9);
+                        DrawSettingRow(isChinese ? "启用" : "Enabled", 9, true);
+                        DrawSettingRow(isChinese ? "距离" : "Distance", 9, false, &visualValues[9][0], 100.0f, 10000.0f);
                         break;
                 }
             }
@@ -975,13 +1245,16 @@ void EGL::EglThread() {
             ImGui::TextDisabled("%s", msg);
         }
         
+        // 添加底部空间确保可以滚动到底
+        ImGui::Dummy(ImVec2(0, 50));
+        
         ImGui::PopStyleColor();
 
         ImGui::EndChild();
 
         ImGui::End();
 
-        ImGui::PopStyleVar(7);
+        ImGui::PopStyleVar(8);
         ImGui::PopStyleColor(23);
 
         imguiMainWinEnd();
