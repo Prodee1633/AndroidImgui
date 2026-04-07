@@ -234,14 +234,14 @@ bool AnimatedSliderInt(const char* label, int* v, int v_min, int v_max, float li
     return changed;
 }
 
-void DrawGlowText(ImDrawList* drawList, ImVec2 pos, ImU32 color, const char* text, float glowIntensity = 1.0f) {
+void DrawGlowText(ImDrawList* drawList, ImVec2 pos, ImU32 color, const char* text, float glowIntensity) {
     // 绘制辉光效果
     for (int i = 4; i >= 1; i--) {
         float alpha = (100.0f / i) * glowIntensity;
         ImU32 glowColor = IM_COL32(
-            (int)(((color >> IM_COL32_R_SHIFT) & 0xFF) * 0.8f),
-            (int)(((color >> IM_COL32_G_SHIFT) & 0xFF) * 0.8f),
-            (int)(((color >> IM_COL32_B_SHIFT) & 0xFF) * 0.8f),
+            (int)(((color >> IM_COL32_R_SHIFT) & 0xFF) * 0.9f),
+            (int)(((color >> IM_COL32_G_SHIFT) & 0xFF) * 0.9f),
+            (int)(((color >> IM_COL32_B_SHIFT) & 0xFF) * 0.9f),
             (int)alpha
         );
         float offset = i * 0.8f;
@@ -299,8 +299,9 @@ void EGL::EglThread() {
     static float toggleAnimProgress[50] = {0};
     static float sliderDisplayValue[50] = {0};
     
-    // 当前正在绑定的按键索引
-    static int bindingModuleIdx = -1;
+    // 按键绑定状态
+    static int bindingTab = -1;
+    static int bindingModule = -1;
     static bool isWaitingForBind = false;
 
     // 模块数据 - Combat
@@ -392,22 +393,20 @@ void EGL::EglThread() {
         themeColorWithAlpha.w = themeOverlayAlpha;
 
         // 绘制菜单开关按钮（在菜单外部）
-        if (!menuOpen || menuAnimProgress > 0.0f) {
-            ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(120, 50), ImGuiCond_Always);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.18f, 0.9f));
-            ImGui::Begin("MenuToggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-            if (ImGui::Button(menuOpen ? (isChinese ? "隐藏" : "Hide") : (isChinese ? "显示" : "Show"), ImVec2(100, 30))) {
-                menuOpen = !menuOpen;
-            }
-            ImGui::End();
-            ImGui::PopStyleColor();
-            ImGui::PopStyleVar();
+        ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(120, 50), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.18f, 0.9f));
+        ImGui::Begin("MenuToggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+        if (ImGui::Button(menuOpen ? (isChinese ? "隐藏" : "Hide") : (isChinese ? "显示" : "Show"), ImVec2(100, 30))) {
+            menuOpen = !menuOpen;
         }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
         
         // 如果菜单完全关闭，跳过主菜单渲染
-        if (menuAnimProgress <= 0.0f && !menuOpen) {
+        if (menuAnimProgress <= 0.001f && !menuOpen) {
             imguiMainWinEnd();
             if (mEglDisplay != EGL_NO_DISPLAY && mEglSurface != EGL_NO_SURFACE) {
                 this->swapBuffers();
@@ -421,7 +420,7 @@ void EGL::EglThread() {
         
         ImGui::SetNextWindowBgAlpha(bgAlpha * menuAlpha);
         
-        // 使用MenuBar标志允许拖动标题栏
+        // 使用MenuBar标志，保留标题栏可以拖动
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, globalRounding * 2.0f);
@@ -432,6 +431,7 @@ void EGL::EglThread() {
         ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 6.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 8.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(15.0f, 15.0f));
 
         ImGui::PushStyleColor(ImGuiCol_TitleBg, themeColorWithAlpha);
         ImGui::PushStyleColor(ImGuiCol_TitleBgActive, themeColorWithAlpha);
@@ -470,18 +470,6 @@ void EGL::EglThread() {
         ImGui::Begin(windowTitle, nullptr, windowFlags);
         input->g_window = g_window = ImGui::GetCurrentWindow();
         windowPos = ImGui::GetWindowPos();
-
-        // 绘制标题栏（可拖动）
-        ImVec2 titleBarMin = ImGui::GetWindowPos();
-        ImVec2 titleBarMax = ImVec2(titleBarMin.x + scaledSize.x, titleBarMin.y + 35);
-        ImDrawList* winDrawList = ImGui::GetWindowDrawList();
-        winDrawList->AddRectFilled(titleBarMin, titleBarMax, ImGui::ColorConvertFloat4ToU32(themeColorWithAlpha), globalRounding * 2.0f, ImDrawFlags_RoundCornersTop);
-        
-        ImVec2 titleTextPos = ImVec2(titleBarMin.x + scaledSize.x * 0.5f - ImGui::CalcTextSize(windowTitle).x * 0.5f, titleBarMin.y + 8);
-        winDrawList->AddText(titleTextPos, IM_COL32(255, 255, 255, 255), windowTitle);
-        
-        // 让标题栏可拖动
-        ImGui::SetCursorPosY(40);
 
         ImVec2 winPos = ImGui::GetWindowPos();
         ImVec2 winSize = ImGui::GetWindowSize();
@@ -572,12 +560,12 @@ void EGL::EglThread() {
         ImGui::SetCursorPosX(10.0f);
         
         // 增加底部padding确保可以滚动到底
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 20.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 15.0f));
         ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 15.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         ImGui::PopStyleVar();
         
         float leftButtonWidth = leftPanelWidth - 45.0f;
-        float moduleButtonHeight = 45.0f;
+        float moduleButtonHeight = 48.0f; // 增加高度避免g被遮挡
         
         const char** currentModules = nullptr;
         const char** currentModulesCN = nullptr;
@@ -615,33 +603,35 @@ void EGL::EglThread() {
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             
-            // 选中的模块使用辉光效果
-            if (i == selectedModule) {
-                ImVec2 textPos = ImGui::GetCursorScreenPos();
-                textPos.x += offsetX + 10;
-                textPos.y += 12;
-                const char* moduleLabel = isChinese ? currentModulesCN[i] : currentModules[i];
-                DrawGlowText(drawList, textPos, IM_COL32(255, 255, 255, 255), moduleLabel, 1.2f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, opacity));
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, opacity));
-            }
-            
+            // 获取按钮位置用于绘制辉光
             ImVec2 buttonPos = ImGui::GetCursorPos();
             buttonPos.x += offsetX;
             ImGui::SetCursorPos(buttonPos);
             
             const char* moduleLabel = isChinese ? currentModulesCN[i] : currentModules[i];
+            
+            // 先绘制按钮（不可见背景）
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, opacity));
             if (ImGui::Button(moduleLabel, ImVec2(leftButtonWidth, moduleButtonHeight))) {
                 selectedModule = i;
             }
+            ImGui::PopStyleColor();
             
-            ImGui::PopStyleColor(4);
+            // 如果是选中的模块，在按钮位置绘制辉光
+            if (i == selectedModule) {
+                ImVec2 screenPos = ImGui::GetItemRectMin();
+                ImVec2 textSize = ImGui::CalcTextSize(moduleLabel);
+                float textX = screenPos.x + (leftButtonWidth - textSize.x) * 0.5f + offsetX;
+                float textY = screenPos.y + (moduleButtonHeight - textSize.y) * 0.5f;
+                DrawGlowText(drawList, ImVec2(textX, textY), IM_COL32(255, 255, 255, 255), moduleLabel, 1.2f);
+            }
+            
+            ImGui::PopStyleColor(3);
             ImGui::Spacing();
         }
 
         // 添加底部空间确保可以滚动到底
-        ImGui::Dummy(ImVec2(0, 30));
+        ImGui::Dummy(ImVec2(0, 40));
         
         ImGui::EndChild();
 
@@ -661,7 +651,7 @@ void EGL::EglThread() {
         io->FontGlobalScale = fontScale;
         
         // 增加底部padding确保可以滚动到底
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 20.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 15.0f));
         ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         ImGui::PopStyleVar();
         
@@ -677,26 +667,22 @@ void EGL::EglThread() {
             }
         };
         
-        // 绘制设置项 - 重新设计布局
+        // 绘制设置项 - 修复布局
         auto DrawSettingRow = [&](const char* name, int idx, bool isToggle, float* fval = nullptr, float fmin = 0, float fmax = 0, int* ival = nullptr, int imin = 0, int imax = 0) {
             float availWidth = ImGui::GetContentRegionAvail().x;
             float toggleWidth = 60.0f;
-            float sliderWidth = 150.0f;
-            float valueWidth = 50.0f;
-            float spacing = 15.0f;
+            float sliderWidth = 120.0f;
+            float valueWidth = 40.0f;
             
             // 设置名称
             ImGui::Text("%s", name);
             
-            float currentX = ImGui::GetCursorPosX();
-            float nameWidth = ImGui::CalcTextSize(name).x;
-            
             if (isToggle) {
                 ImGui::SameLine(availWidth - toggleWidth);
-                if (AnimatedToggle("##toggle", &currentEnabled[idx], 60, 30, toggleAnimProgress[moduleOffset + idx])) {}
+                if (AnimatedToggle("##toggle", &currentEnabled[idx], 60, 28, toggleAnimProgress[moduleOffset + idx])) {}
             } else {
-                // 数值显示
-                ImGui::SameLine(availWidth - sliderWidth - valueWidth - spacing * 2);
+                // 滑块和数值
+                ImGui::SameLine(availWidth - sliderWidth - valueWidth - 10);
                 if (fval != nullptr) {
                     UpdateSliderAnim(idx, *fval);
                     ImGui::Text("%.1f", sliderDisplayValue[idx]);
@@ -705,34 +691,33 @@ void EGL::EglThread() {
                     ImGui::Text("%d", (int)sliderDisplayValue[idx]);
                 }
                 
-                // 滑块
-                ImGui::SameLine(availWidth - sliderWidth - spacing);
+                ImGui::SameLine(availWidth - sliderWidth);
                 if (fval != nullptr) {
-                    AnimatedSliderFloat("##slider", fval, fmin, fmax, 4.0f, 30.0f, sliderDisplayValue[idx]);
+                    AnimatedSliderFloat("##slider", fval, fmin, fmax, 4.0f, 28.0f, sliderDisplayValue[idx]);
                 } else if (ival != nullptr) {
-                    AnimatedSliderInt("##slider", ival, imin, imax, 4.0f, 30.0f, sliderDisplayValue[idx]);
+                    AnimatedSliderInt("##slider", ival, imin, imax, 4.0f, 28.0f, sliderDisplayValue[idx]);
                 }
             }
             ImGui::Spacing();
-            ImGui::Spacing();
         };
         
-        // 绘制按键绑定区域（单独一行）
+        // 绘制按键绑定区域（每个模块只有一个）
         auto DrawKeyBind = [&](int idx) {
             ImGui::Text(isChinese ? "按键绑定" : "Key Bind");
-            ImGui::SameLine(150);
+            ImGui::SameLine(120);
             
             char bindButtonLabel[64];
-            if (isWaitingForBind && bindingModuleIdx == idx) {
-                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", isChinese ? "按任意键..." : "Press any key...");
+            if (isWaitingForBind && bindingTab == selectedTab && bindingModule == idx) {
+                snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", isChinese ? "按任意键..." : "Press key...");
             } else {
                 snprintf(bindButtonLabel, sizeof(bindButtonLabel), "%s", currentBinds[idx]);
             }
             
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.25f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
-            if (ImGui::Button(bindButtonLabel, ImVec2(100, 28))) {
-                bindingModuleIdx = idx;
+            if (ImGui::Button(bindButtonLabel, ImVec2(90, 26))) {
+                bindingTab = selectedTab;
+                bindingModule = idx;
                 isWaitingForBind = true;
             }
             ImGui::PopStyleColor(2);
@@ -1105,7 +1090,7 @@ void EGL::EglThread() {
                 
                 ImGui::Text(isChinese ? "启用" : "Enabled");
                 ImGui::SameLine(contentAvailWidth - 70);
-                if (AnimatedToggle("##interface_enabled", &visualEnabled[0], 60, 30, toggleAnimProgress[40])) {}
+                if (AnimatedToggle("##interface_enabled", &visualEnabled[0], 60, 28, toggleAnimProgress[40])) {}
                 ImGui::Spacing();
                 ImGui::Spacing();
                 
@@ -1246,7 +1231,7 @@ void EGL::EglThread() {
         }
         
         // 添加底部空间确保可以滚动到底
-        ImGui::Dummy(ImVec2(0, 50));
+        ImGui::Dummy(ImVec2(0, 60));
         
         ImGui::PopStyleColor();
 
@@ -1254,7 +1239,7 @@ void EGL::EglThread() {
 
         ImGui::End();
 
-        ImGui::PopStyleVar(8);
+        ImGui::PopStyleVar(9);
         ImGui::PopStyleColor(23);
 
         imguiMainWinEnd();
