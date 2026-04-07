@@ -1054,6 +1054,19 @@ void EGL::EglThread() {
                 DrawSettingRow(isChinese ? "背景透明度" : "Background Alpha", 0, false, &bgAlpha, 0.1f, 1.0f);
                 DrawSettingRow(isChinese ? "主题透明度" : "Theme Alpha", 0, false, &themeOverlayAlpha, 0.1f, 1.0f);
                 DrawSettingRow(isChinese ? "全局圆角" : "Global Rounding", 0, false, &globalRounding, 0.0f, 20.0f);
+                
+                // 主题颜色
+                float availWidth = ImGui::GetContentRegionAvail().x;
+                ImGui::Text(isChinese ? "主题颜色" : "Theme Color");
+                ImGui::SameLine(availWidth - 50);
+                ImGui::ColorEdit3("##theme_color", (float*)&themeColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+                ImGui::Spacing();
+                ImGui::Spacing();
+                
+                // 字体颜色
+                ImGui::Text(isChinese ? "字体颜色" : "Text Color");
+                ImGui::SameLine(availWidth - 50);
+                ImGui::ColorEdit3("##text_color", (float*)&textColor, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
             }
             else {
                 switch(selectedModule) {
