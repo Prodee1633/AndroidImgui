@@ -298,6 +298,9 @@ void EGL::EglThread() {
     static int bindingTab = -1;
     static int bindingModule = -1;
     static bool isWaitingForBind = false;
+    
+    // 右面板额外宽度（可在Interface中调节）
+    static float rightPanelExtraWidth = 0.0f;
 
     // 模块数据
     static bool combatEnabled[10] = {false};
@@ -418,8 +421,8 @@ void EGL::EglThread() {
         ImVec2 winSize = ImGui::GetWindowSize();
         // 调整左侧面板宽度，修复右边空白问题
         float leftPanelWidth = 220.0f;
-        // 硬编码右侧面板宽度
-        float rightPanelWidth = 782.2f;
+        // 右面板宽度自适应（窗口宽度 - 左面板 - 分隔线 - 滚动条空间 + 额外宽度）
+        float rightPanelWidth = winSize.x - leftPanelWidth - 50.0f - 30.0f + rightPanelExtraWidth;
         float contentHeight = winSize.y - 140.0f;
 
         float animSpeed = 0.08f;
@@ -619,34 +622,26 @@ void EGL::EglThread() {
             ImGui::Spacing();
         };
         
-        // 按键绑定区域 - 放到最右边，文本一直是None，缩小字体，上下居中
+        // 按键绑定区域 - 右边显示"None"文本，可点击触发弹窗
         auto DrawKeyBind = [&](int idx) {
             float availWidth = ImGui::GetContentRegionAvail().x;
             
             ImGui::Text(isChinese ? "按键绑定" : "Key Bind");
             
             // 放到最右边
-            ImGui::SameLine(availWidth - 80);
+            ImGui::SameLine(availWidth - 60);
             
-            // 保存当前字体缩放并缩小
-            float oldFontScale = io->FontGlobalScale;
-            io->FontGlobalScale = oldFontScale * 0.7f;
-            
-            // 按钮高度使文本居中
-            float buttonHeight = 22.0f;
-            
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.25f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
-            // 文本一直是"None"
-            if (ImGui::Button("None", ImVec2(70, buttonHeight))) {
+            // 可点击的"None"文本
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_TextHovered, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            if (ImGui::Selectable("None", false, ImGuiSelectableFlags_None, ImVec2(50, 0))) {
                 bindingTab = selectedTab;
                 bindingModule = idx;
                 isWaitingForBind = true;
+                // 触发安卓弹窗
+                input->toast("请在三秒内按下你想要绑定的按键！");
             }
             ImGui::PopStyleColor(2);
-            
-            // 恢复字体缩放
-            io->FontGlobalScale = oldFontScale;
             
             ImGui::Spacing();
             ImGui::Separator();
@@ -1014,6 +1009,8 @@ void EGL::EglThread() {
                 DrawSettingRow(isChinese ? "背景透明度" : "Background Alpha", 0, false, &bgAlpha, 0.1f, 1.0f);
                 DrawSettingRow(isChinese ? "主题透明度" : "Theme Alpha", 0, false, &themeOverlayAlpha, 0.1f, 1.0f);
                 DrawSettingRow(isChinese ? "全局圆角" : "Global Rounding", 0, false, &globalRounding, 0.0f, 20.0f);
+                // 右面板额外宽度调节
+                DrawSettingRow(isChinese ? "右面板额外宽度" : "Right Panel Extra", 0, false, &rightPanelExtraWidth, -200.0f, 200.0f);
             }
             else {
                 switch(selectedModule) {
