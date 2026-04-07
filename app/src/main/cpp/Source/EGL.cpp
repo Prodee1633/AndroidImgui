@@ -632,8 +632,8 @@ void EGL::EglThread() {
             ImGui::SameLine(availWidth - 60);
             
             // 可点击的"None"文本
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_TextHovered, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            ImVec4 textColor = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_Text, textColor);
             if (ImGui::Selectable("None", false, ImGuiSelectableFlags_None, ImVec2(50, 0))) {
                 bindingTab = selectedTab;
                 bindingModule = idx;
@@ -641,7 +641,7 @@ void EGL::EglThread() {
                 // 触发安卓弹窗
                 input->toast("请在三秒内按下你想要绑定的按键！");
             }
-            ImGui::PopStyleColor(2);
+            ImGui::PopStyleColor();
             
             ImGui::Spacing();
             ImGui::Separator();
