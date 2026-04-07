@@ -535,7 +535,7 @@ void EGL::EglThread() {
         io->FontGlobalScale = 1.0f;
         
         ImGui::SetCursorPosX(5.0f);
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false, ImGuiWindowFlags_VerticalScrollbar);
+        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth - 10.0f, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         
         float leftButtonWidth = leftPanelWidth - 50.0f;
         float moduleButtonHeight = 40.0f;
@@ -618,7 +618,7 @@ void EGL::EglThread() {
 
         // 右侧面板 - 带滚动条
         io->FontGlobalScale = fontScale;
-        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_VerticalScrollbar);
+        ImGui::BeginChild("RightPanel", ImVec2(rightPanelWidth, contentHeight), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         
         ImU32 fadeColor = IM_COL32(255, 255, 255, (int)(255 * contentFadeProgress));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, contentFadeProgress));
