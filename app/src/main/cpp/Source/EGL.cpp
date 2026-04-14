@@ -93,64 +93,63 @@ void EGL::EglThread() {
     if (this->initImgui() != 1) return;
     ThreadIo = true;
     
-    // 【防闪退修复】初始化输入系统
     if (input == nullptr || io == nullptr) { ThreadIo = false; return; }
     input->initImguiIo(io); 
     input->setImguiContext(g);
 
-    // 1. 核心写死参数：宽1000，高750，透明度1
+    // --- 变量定义 ---
     static float targetWidth = 1000.0f, targetHeight = 750.0f;
-    static float targetAlpha = 1.0f; // 整体透明度固定为1
-    
-    // 2. 左侧列表布局参数
-    static float listWidth = 300.0f;
+    static float targetAlpha = 1.0f;
+    static float listWidth = 270.0f; // 固定 270px
     static float itemSpacing = 23.5f;
     static float iconSize = 20.0f;
     static float listItemTextSize = 30.0f;
+    static float meltScale = 2.0f;
+    static float meltOffsetX = 40.0f, meltOffsetY = 30.0f; // 上移10px (40->30)
     
-    // 3. Melt 文本参数
-    static float meltScale = 2.0f; // 也就是文本大小乘以2
-    static float meltOffsetX = 40.0f, meltOffsetY = 40.0f;
+    static float titleGlowIntensity = 5.0f;
+    static float titleGlowAlpha = 0.5f;
+    static float modShadowSize = 15.0f;
+    static float modShadowAlpha = 0.4f;
+    static float modTitleFontSize = 28.0f; // 模块标题字体调节
+
+    static float targetRounding = 20.0f;
+    static float animSpeed = 12.0f;
+    static float modTitleOffsetX = 15.0f;
+    static float modTitleOffsetY = 15.0f;
     
-    // 4. ClickGui 模块内调节的参数
-    static float titleGlowIntensity = 5.0f;  // Title辉光强度
-    static float titleGlowAlpha = 0.5f;      // 辉光透明度
-    static float modShadowSize = 15.0f;      // 右侧模块背景Shadow大小
-    static float modShadowAlpha = 0.4f;      // 右侧模块背景Shadow透明度
+    // 背景颜色合并
+    static ImVec4 mainBgColor = ImVec4(0.12f, 0.12f, 0.12f, 1.0f); 
 
-    // 5. Interface 模块内调节的参数
-    static float targetRounding = 20.0f;     // 圆角
-    static float animSpeed = 12.0f;          // 圆角/位置等动画速度
-    static float modTitleOffsetX = 15.0f;    // 模块Title X轴偏移
-    static float modTitleOffsetY = 15.0f;    // 模块Title Y轴偏移
-    static ImVec4 leftBgColor = ImVec4(0.12f, 0.12f, 0.12f, 1.0f);   // 左侧列表背景
-    static ImVec4 rightBgColor = ImVec4(0.16f, 0.16f, 0.16f, 1.0f);  // 右侧模块背景
-
-    // 动画过渡变量 (当前实际渲染的平滑值)
     static float animWidth = targetWidth, animHeight = targetHeight;
-    static float animPosX = -1000, animPosY = -1000; // 初始丢在屏幕外，飞入
+    static float animPosX = -1000, animPosY = -1000;
     static float animAlpha = 0.0f;
     
-    // 交互状态追踪
-    static int selectedTab = 4; // 默认选中 4 (Client)
+    static int selectedTab = 4;
     const char* tabs[] = { "Search", "Player", "Render", "Visual", "Client", "Themes", "Language", "Config" };
-    static float itemAnims[8] = { 0.0f }; // 列表文本悬停偏移 (0.0 到 1.0)
+    const char* langs[] = { "🇺🇸 English", "🇷🇺 Russian", "🇫🇷 French", "🇨🇳 Chinese" };
+    static int currentLangIdx = 3;
+    static float itemAnims[8] = { 0.0f };
     
-    // Melt 拖拽系统
     static float meltHoldTime = 0.0f;
     static bool isDraggingMenu = false;
     static ImVec2 dragOffset;
-    static float manualPosX = 0.0f, manualPosY = 0.0f; // 用于记录拖拽后的目标位置
+    static float manualPosX = 0.0f, manualPosY = 0.0f;
     static bool hasInitializedPos = false;
 
-    // 模块展开状态机结构
+    // 滚动相关
+    static float scrollY = 0.0f;
+    static float targetScrollY = 0.0f;
+    static float contentTotalHeight = 0.0f;
+
     struct ModState {
         float holdTime = 0.0f;
         bool isExpanded = false;
-        float currentHeight = 100.0f; // 初始固定高度100px
+        float currentHeight = 100.0f;
         float targetHeight = 100.0f;
+        ImVec2 pressPos; // 记录按下坐标
     };
-    static ModState clickGuiMod, interfaceMod;
+    static ModState mods[10]; // 简单为各功能分配状态空间
 
     while (true) {
         if (this->isDestroy) { ThreadIo = false; cond.notify_all(); return; }
@@ -161,212 +160,166 @@ void EGL::EglThread() {
         imguiMainWinStart();
         float dt = io->DeltaTime;
 
-        // 首次居中计算
         if (!hasInitializedPos && surfaceWidth > 0) {
             manualPosX = (surfaceWidth - targetWidth) / 2.0f;
             manualPosY = (surfaceHigh - targetHeight) / 2.0f;
             hasInitializedPos = true;
         }
 
-        // 线性平滑动画
-        animWidth  += (targetWidth - animWidth)   * animSpeed * dt;
-        animHeight += (targetHeight - animHeight) * animSpeed * dt;
-        animPosX   += (manualPosX - animPosX)     * animSpeed * dt;
-        animPosY   += (manualPosY - animPosY)     * animSpeed * dt;
-        animAlpha  += (targetAlpha - animAlpha)   * animSpeed * dt;
+        animPosX += (manualPosX - animPosX) * animSpeed * dt;
+        animPosY += (manualPosY - animPosY) * animSpeed * dt;
+        animAlpha += (targetAlpha - animAlpha) * animSpeed * dt;
+        scrollY += (targetScrollY - scrollY) * animSpeed * dt;
 
-        // 建立一块包裹整个菜单的画布，并允许输入事件 (允许滑动条操作)
-        float padding = 150.0f; // 留出足够空间给 Melt 文本和外围阴影，防止被截断
-        ImGui::SetNextWindowPos(ImVec2(animPosX - padding, animPosY - padding));
-        ImGui::SetNextWindowSize(ImVec2(animWidth + padding * 2, animHeight + padding * 2));
-        ImGui::Begin("MainCanvas", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::SetNextWindowPos(ImVec2(animPosX - 100, animPosY - 100));
+        ImGui::SetNextWindowSize(ImVec2(animWidth + 200, animHeight + 200));
+        ImGui::Begin("MainCanvas", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground);
         
-        // 核心修复：同步窗口指针，防止底层滑动抛出空指针异常
         this->g_window = ImGui::GetCurrentWindow();
         input->g_window = this->g_window;
-
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        
         ImVec2 rectMin = ImVec2(animPosX, animPosY);
         ImVec2 rectMax = ImVec2(animPosX + animWidth, animPosY + animHeight);
 
-        // --- A. 绘制大背景与左侧区域 ---
-        // 左侧独立背景 (右侧无圆角)
-        drawList->AddRectFilled(
-            rectMin, 
-            ImVec2(rectMin.x + listWidth, rectMax.y), 
-            ImGui::ColorConvertFloat4ToU32(leftBgColor), 
-            targetRounding, ImDrawFlags_RoundCornersLeft
-        );
-        
-        // 右侧留空区域，用一条细线或者直接用主背景托底
-        drawList->AddRectFilled(
-            ImVec2(rectMin.x + listWidth, rectMin.y), 
-            rectMax, 
-            IM_COL32(10, 10, 10, (int)(animAlpha * 180)), // 整体稍微暗一点作为主底色
-            targetRounding, ImDrawFlags_RoundCornersRight
-        );
+        // --- 1. 绘制主背景阴影 ---
+        for (int i = 1; i <= 10; i++) {
+            drawList->AddRect(rectMin - ImVec2(i, i), rectMax + ImVec2(i, i), 
+                IM_COL32(0, 0, 0, (int)(modShadowAlpha * 255 * (1.0f - i/10.0f))), targetRounding + i);
+        }
 
-        // --- B. Melt 文本及拖拽检测 ---
+        // --- 2. 绘制背景 ---
+        drawList->AddRectFilled(rectMin, rectMax, ImGui::ColorConvertFloat4ToU32(mainBgColor), targetRounding);
+
+        // --- 3. Melt 文本及拖拽 ---
         float meltFontSize = 30.0f * meltScale;
         ImVec2 meltPos = ImVec2(rectMin.x + meltOffsetX, rectMin.y + meltOffsetY);
-        
-        // 拖拽判断碰撞箱
-        ImRect meltHitbox(meltPos.x, meltPos.y, meltPos.x + 150.0f, meltPos.y + meltFontSize);
-        if (meltHitbox.Contains(io->MousePos) && ImGui::IsMouseDown(0)) {
+        if (ImRect(meltPos, meltPos + ImVec2(150, 50)).Contains(io->MousePos) && ImGui::IsMouseDown(0)) {
             meltHoldTime += dt;
-            if (meltHoldTime > 0.2f && !isDraggingMenu) { // 长按 0.2s 触发拖拽
+            if (meltHoldTime > 0.2f && !isDraggingMenu) {
                 isDraggingMenu = true;
                 dragOffset = ImVec2(manualPosX - io->MousePos.x, manualPosY - io->MousePos.y);
             }
-        } else {
-            meltHoldTime = 0.0f;
-            isDraggingMenu = false;
-        }
-        
-        if (isDraggingMenu) { // 拖拽时更新目标坐标
-            manualPosX = io->MousePos.x + dragOffset.x;
-            manualPosY = io->MousePos.y + dragOffset.y;
-        }
-
-        // 绘制 Melt 文本及辉光 (辉光由 titleGlowIntensity 和 titleGlowAlpha 调节)
-        if (titleGlowIntensity > 0.1f) {
-            ImU32 gCol = IM_COL32(255, 255, 255, (int)(titleGlowAlpha * animAlpha * 255 / 3.0f));
-            for (int i = 1; i <= 3; i++) {
-                float offset = (i * titleGlowIntensity) / 3.0f;
-                drawList->AddText(imFont, meltFontSize, ImVec2(meltPos.x + offset, meltPos.y), gCol, "Melt");
-                drawList->AddText(imFont, meltFontSize, ImVec2(meltPos.x - offset, meltPos.y), gCol, "Melt");
-                drawList->AddText(imFont, meltFontSize, ImVec2(meltPos.x, meltPos.y + offset), gCol, "Melt");
-                drawList->AddText(imFont, meltFontSize, ImVec2(meltPos.x, meltPos.y - offset), gCol, "Melt");
-            }
-        }
+        } else { meltHoldTime = 0.0f; isDraggingMenu = false; }
+        if (isDraggingMenu) { manualPosX = io->MousePos.x + dragOffset.x; manualPosY = io->MousePos.y + dragOffset.y; }
         drawList->AddText(imFont, meltFontSize, meltPos, IM_COL32(255, 255, 255, (int)(animAlpha * 255)), "Melt");
 
-        // --- C. 左侧列表交互与绘制 ---
-        float listStartY = rectMin.y + 100.0f;
+        // --- 4. 左侧列表 (向下向右偏移 30px) ---
+        float listStartY = rectMin.y + 100.0f + 30.0f; // 下移30
         for (int i = 0; i < 8; i++) {
-            ImVec2 itemPos = ImVec2(rectMin.x + 20.0f, listStartY + i * (listItemTextSize + itemSpacing));
+            float currentOffset = 30.0f + 40.0f + (itemAnims[i] * 10.0f); // 右移30 + 原基础40
+            ImVec2 itemPos = ImVec2(rectMin.x + 30.0f, listStartY + i * (listItemTextSize + itemSpacing));
             
-            // 点击检测
-            bool isHovered = false;
-            if (io->MousePos.x >= rectMin.x && io->MousePos.x <= rectMin.x + listWidth &&
-                io->MousePos.y >= itemPos.y && io->MousePos.y <= itemPos.y + listItemTextSize) {
-                isHovered = true;
-                if (ImGui::IsMouseClicked(0)) selectedTab = i;
+            if (ImRect(ImVec2(rectMin.x, itemPos.y), ImVec2(rectMin.x + listWidth, itemPos.y + listItemTextSize)).Contains(io->MousePos)) {
+                if (ImGui::IsMouseClicked(0)) { selectedTab = i; targetScrollY = 0; }
+                itemAnims[i] += (1.0f - itemAnims[i]) * animSpeed * dt;
+            } else {
+                float t = (selectedTab == i) ? 1.0f : 0.0f;
+                itemAnims[i] += (t - itemAnims[i]) * animSpeed * dt;
             }
-            
-            bool isSelected = (selectedTab == i);
-            float targetItemAnim = (isHovered || isSelected) ? 1.0f : 0.0f;
-            itemAnims[i] += (targetItemAnim - itemAnims[i]) * animSpeed * dt;
-
-            // X轴偏移40要求 (文本坐标) + 向右动画偏移10
-            float currentOffset = 40.0f + (itemAnims[i] * 10.0f);
-            float currentItemAlpha = 0.7f + (itemAnims[i] * 0.3f); 
-
-            ImU32 itemCol = IM_COL32(255, 255, 255, (int)(255 * currentItemAlpha * animAlpha));
-
-            // Icon
-            ImVec2 iconPos = ImVec2(rectMin.x + currentOffset - iconSize - 10.0f, itemPos.y + (listItemTextSize - iconSize) / 2.0f);
-            drawList->AddRectFilled(iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize), itemCol, 3.0f); 
-            
-            // Text
-            drawList->AddText(imFont, listItemTextSize, ImVec2(rectMin.x + currentOffset, itemPos.y), itemCol, tabs[i]);
+            drawList->AddText(imFont, listItemTextSize, ImVec2(rectMin.x + currentOffset, itemPos.y), 
+                IM_COL32(255, 255, 255, (int)(255 * (0.7f + itemAnims[i] * 0.3f) * animAlpha)), tabs[i]);
         }
 
-        // --- D. 右侧模块通用渲染逻辑封装 ---
-        auto DrawModuleCard = [&](const char* title, const char* desc, ModState& state, float yPos, std::function<void()> drawContent) {
-            float modX = rectMin.x + listWidth + 7.5f; // 右侧起始加上 7.5px 留白
-            float modW = animWidth - listWidth - 15.0f; // 宽度自适应 (减去15px)
-            
-            // 更新展开动画
-            state.currentHeight += (state.targetHeight - state.currentHeight) * animSpeed * dt;
+        // --- 5. 右侧模块处理逻辑 ---
+        float modAreaX = rectMin.x + listWidth + 15.0f;
+        float modAreaW = animWidth - listWidth - 30.0f; // 左右留白15px (合计30)
+        ImRect rightArea(modAreaX, rectMin.y, rectMin.x + animWidth, rectMax.y);
 
-            ImRect modRect(modX, yPos, modX + modW, yPos + 100.0f); // 顶部的 100px 为长按触发区
-            bool hovered = modRect.Contains(io->MousePos);
+        // 简单的滑动逻辑
+        if (rightArea.Contains(io->MousePos) && ImGui::IsMouseDragging(0)) {
+            targetScrollY += io->MouseDelta.y;
+            if (targetScrollY > 0) targetScrollY = 0;
+            if (targetScrollY < -(contentTotalHeight - animHeight + 40)) targetScrollY = -(contentTotalHeight - animHeight + 40);
+        }
+
+        drawList->PushClipRect(ImVec2(modAreaX - 5, rectMin.y + 20), ImVec2(rectMax.x, rectMax.y - 20), true);
+        float currentY = rectMin.y + 20.0f + scrollY;
+
+        // 模块绘制 Lambda
+        auto DrawModuleCard = [&](const char* title, const char* desc, ModState& state, float y, std::function<void()> content, bool canExpand = true) {
+            float h = state.currentHeight;
+            ImRect box(modAreaX, y, modAreaX + modAreaW, y + h);
             
-            if (hovered && ImGui::IsMouseDown(0)) {
-                state.holdTime += dt;
-                // 长按 1s 触发向下展开
-                if (state.holdTime >= 1.0f && !state.isExpanded) {
-                    state.isExpanded = true;
+            // 绘制模块 Shadow
+            if (modShadowSize > 0) {
+                drawList->AddRect(box.Min - ImVec2(2,2), box.Max + ImVec2(2,2), IM_COL32(0,0,0, (int)(modShadowAlpha*255)), targetRounding);
+            }
+            drawList->AddRectFilled(box.Min, box.Max, ImGui::ColorConvertFloat4ToU32(mainBgColor), targetRounding);
+            drawList->AddText(imFont, modTitleFontSize, box.Min + ImVec2(modTitleOffsetX, modTitleOffsetY), IM_COL32(255,255,255,255), title);
+            drawList->AddText(imFont, 18.0f, box.Min + ImVec2(modTitleOffsetX, modTitleOffsetY + 35.0f), IM_COL32(200,200,200,180), desc);
+
+            // 交互逻辑
+            if (canExpand && rightArea.Contains(io->MousePos) && box.Contains(io->MousePos)) {
+                if (ImGui::IsMouseClicked(0)) { state.pressPos = io->MousePos; }
+                if (ImGui::IsMouseDown(0)) {
+                    state.holdTime += dt;
+                    // 长按 0.5s 且移动不超过 20px 展开
+                    if (!state.isExpanded && state.holdTime > 0.5f && ImGui::GetMouseDragDelta(0).Length() < 20.0f) {
+                        state.isExpanded = true;
+                        state.holdTime = 0;
+                    }
                 }
-            } else {
-                if (hovered && ImGui::IsMouseReleased(0)) {
-                    // 短按也可以关闭
-                    if (state.isExpanded && state.holdTime < 1.0f) state.isExpanded = false;
+                if (ImGui::IsMouseReleased(0)) {
+                    // 如果已经展开，点击则关闭
+                    if (state.isExpanded && state.holdTime < 0.3f) state.isExpanded = false;
+                    state.holdTime = 0;
                 }
-                state.holdTime = 0.0f;
             }
 
-            // 绘制模块独立 Shadow
-            if (modShadowSize > 0.0f) {
-                for (int i=1; i<=8; i++) {
-                    float sAlpha = (1.0f - i/8.0f) * modShadowAlpha * animAlpha;
-                    drawList->AddRect(
-                        ImVec2(modX - i, yPos - i), 
-                        ImVec2(modX + modW + i, yPos + state.currentHeight + i), 
-                        IM_COL32(0,0,0, (int)(sAlpha*255)), targetRounding + i
-                    );
-                }
-            }
-            
-            // 绘制模块背景
-            drawList->AddRectFilled(ImVec2(modX, yPos), ImVec2(modX + modW, yPos + state.currentHeight), ImGui::ColorConvertFloat4ToU32(rightBgColor), targetRounding);
-
-            // 绘制左上角 Title 和 Desc
-            ImVec2 titlePos = ImVec2(modX + modTitleOffsetX, yPos + modTitleOffsetY);
-            drawList->AddText(imFont, 28.0f, titlePos, IM_COL32(255,255,255, (int)(255 * animAlpha)), title);
-            
-            ImVec2 descPos = ImVec2(titlePos.x, titlePos.y + 35.0f);
-            drawList->AddText(imFont, 18.0f, descPos, IM_COL32(255,255,255, (int)(128 * animAlpha)), desc); // 0.5透明度的介绍
-
-            // 内部调节器渲染 (通过 ClipRect 防止溢出)
-            if (state.isExpanded || state.currentHeight > 105.0f) {
-                drawList->PushClipRect(ImVec2(modX, yPos), ImVec2(modX + modW, yPos + state.currentHeight), true);
-                
-                ImGui::SetCursorScreenPos(ImVec2(modX + 20, yPos + 90));
+            if (state.isExpanded) {
+                ImGui::SetCursorScreenPos(box.Min + ImVec2(20, 95));
                 ImGui::BeginGroup();
-                ImGui::PushItemWidth(modW - 150); // 留出文字空间
-                drawContent(); // 渲染 Slider
-                ImGui::PopItemWidth();
+                // 设置细长滑块样式
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 12.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 2)); 
+                content();
+                ImGui::PopStyleVar(3);
                 ImGui::EndGroup();
-                
-                // 动态获取高度，实现“向下展开高度自适应”
-                if (state.isExpanded) {
-                    state.targetHeight = 90.0f + ImGui::GetItemRectSize().y + 20.0f;
-                }
-                drawList->PopClipRect();
-            } else {
-                state.targetHeight = 100.0f; // 缩回 100px
-            }
-
-            return state.currentHeight + 15.0f; // 返回占据的空间，加上模块间距
+                state.targetHeight = 110.0f + ImGui::GetItemRectSize().y;
+            } else { state.targetHeight = 100.0f; }
+            state.currentHeight += (state.targetHeight - state.currentHeight) * animSpeed * dt;
+            return state.currentHeight + 15.0f;
         };
 
-        // --- E. 渲染对应的右侧模块内容 ---
-        float currentY = rectMin.y + 20.0f;
-        
-        if (selectedTab == 4) { // Client 类别
-            currentY += DrawModuleCard("ClickGui", "管理菜单渲染与全局光效设定", clickGuiMod, currentY, [&]() {
-                ImGui::SliderFloat("Title辉光强度", &titleGlowIntensity, 0.0f, 20.0f, "%.1f");
-                ImGui::SliderFloat("辉光透明度", &titleGlowAlpha, 0.0f, 1.0f, "%.2f");
-                ImGui::SliderFloat("阴影大小", &modShadowSize, 0.0f, 50.0f, "%.1f");
-                ImGui::SliderFloat("阴影透明度", &modShadowAlpha, 0.0f, 1.0f, "%.2f");
+        // --- 内容渲染 ---
+        float startY = currentY;
+        if (selectedTab == 4) { // Client
+            currentY += DrawModuleCard("ClickGui", "UI Visual Settings", mods[0], currentY, [&](){
+                ImGui::SliderFloat("Glow Intensity", &titleGlowIntensity, 0, 20);
+                ImGui::SliderFloat("Shadow Alpha", &modShadowAlpha, 0, 1.0f);
             });
-        } 
-        else if (selectedTab == 3) { // Visual 类别 (放置 Interface)
-            currentY += DrawModuleCard("Interface", "调整客户端基础外观与坐标布局", interfaceMod, currentY, [&]() {
-                ImGui::SliderFloat("圆角大小", &targetRounding, 0.0f, 50.0f, "%.1f");
-                ImGui::SliderFloat("动画速度", &animSpeed, 1.0f, 30.0f, "%.1f");
-                ImGui::SliderFloat("标题X偏移", &modTitleOffsetX, 0.0f, 50.0f, "%.1f");
-                ImGui::SliderFloat("标题Y偏移", &modTitleOffsetY, 0.0f, 50.0f, "%.1f");
-                ImGui::ColorEdit3("左侧列表背景", (float*)&leftBgColor);
-                ImGui::ColorEdit3("右侧模块背景", (float*)&rightBgColor);
+        } else if (selectedTab == 3) { // Visual
+            currentY += DrawModuleCard("Interface", "Layout Settings", mods[1], currentY, [&](){
+                ImGui::SliderFloat("Rounding", &targetRounding, 0, 50);
+                ImGui::SliderFloat("Title Font Size", &modTitleFontSize, 10, 50);
+                ImGui::ColorEdit3("Main Color", (float*)&mainBgColor);
+                
+                // 示例：自定义圆点开关
+                static bool exampleCheck = true;
+                ImGui::Text("Enable Effects"); ImGui::SameLine(modAreaW - 60);
+                if (ImGui::Selectable("##check", &exampleCheck, 0, ImVec2(40, 30))) { exampleCheck = !exampleCheck; }
+                ImVec2 cp = ImGui::GetItemRectMin() + ImVec2(20, 15);
+                if (exampleCheck) drawList->AddCircleFilled(cp, 8.0f, IM_COL32(100, 255, 100, 255));
+                else drawList->AddCircle(cp, 8.0f, IM_COL32(200, 200, 200, 150), 12, 2.0f);
             });
+        } else if (selectedTab == 6) { // Language
+            for (int i = 0; i < 4; i++) {
+                currentY += DrawModuleCard(langs[i], "Select system language", mods[2+i], currentY, [&](){}, false);
+                if (ImGui::IsMouseClicked(0) && ImRect(modAreaX, currentY-115, modAreaX+modAreaW, currentY-15).Contains(io->MousePos)) currentLangIdx = i;
+            }
+        }
+        contentTotalHeight = currentY - startY;
+        drawList->PopClipRect();
+
+        // --- 6. 绘制右侧滚动条 (纯视觉) ---
+        float scrollBarH = (animHeight / (contentTotalHeight + 0.1f)) * animHeight;
+        if (scrollBarH < animHeight) {
+            float scrollBarY = rectMin.y + (-scrollY / contentTotalHeight) * animHeight;
+            drawList->AddRectFilled(ImVec2(rectMax.x - 8, scrollBarY), ImVec2(rectMax.x - 3, scrollBarY + scrollBarH), IM_COL32(255, 255, 255, 180), 5.0f);
         }
 
         ImGui::End();
-
         imguiMainWinEnd();
         if (mEglDisplay != EGL_NO_DISPLAY && mEglSurface != EGL_NO_SURFACE) { this->swapBuffers(); }
         usleep(16000); 
