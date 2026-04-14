@@ -96,128 +96,172 @@ void EGL::EglThread() {
     if (this->initEgl() != 1) return;
     if (this->initImgui() != 1) return;
     ThreadIo = true;
-
-    // 1. 初始化输入系统 (只做一次)
+    
+    // 【防闪退修复】初始化输入系统
     if (input == nullptr || io == nullptr) { ThreadIo = false; return; }
-    input->initImguiIo(io);
+    input->initImguiIo(io); 
     input->setImguiContext(g);
 
-    // --- 固定参数 ---
-    const float winW = 1000.0f;
-    const float winH = 750.0f;
+    // 1. 基础配置变量 (目标值)
+    // 按照你的要求，固定宽高为 1000 和 750
+    static float targetWidth = 1000.0f, targetHeight = 750.0f;
+    static float targetAlpha = 0.8f, targetRounding = 20.0f;
+    
+    // 2. 文本 Melt 变量
+    static float textScale = 1.0f;
+    static float textOffsetX = 20.0f, textOffsetY = 20.0f;
+    static float textGlowIntensity = 5.0f; 
+    static ImVec4 textGlowColor = ImVec4(1, 1, 1, 0.5f); 
 
-    // --- UI 调节变量 ---
-    static float sidebarWidth = 220.0f;
-    static float itemSpacing = 15.0f;
+    // 3. 【新增】列表调节参数
+    static float listWidth = 220.0f;
+    static float itemSpacing = 20.0f;
     static float iconSize = 24.0f;
-    static float textSize = 22.0f;
-    static float animSpeed = 12.0f;
-    static float rectRounding = 15.0f;
-    static float rectAlpha = 0.85f;
+    static float listItemTextSize = 25.0f;
 
-    // --- Melt 文本变量 ---
-    static float meltOffsetX = 20.0f;
-    static float meltOffsetY = -45.0f; // 放在矩形左上方外侧
+    // 动画平滑变量 (当前实际渲染值)
+    static float animWidth = 0, animHeight = 0;
+    static float animPosX = 0, animPosY = 0;
+    static float animAlpha = 0;
+    static float animSpeed = 10.0f; 
 
-    // --- 侧边栏状态 ---
+    // 侧边栏状态
     static int selectedTab = 0;
     const char* tabs[] = { "Search", "Player", "Render", "Visual", "Client", "Themes", "Language", "Config" };
-    // 为每个按钮准备动画位移和透明度 (0.0 - 1.0)
-    static float itemAnims[8] = { 0.0f }; 
+    static float itemAnims[8] = { 0.0f }; // 用于每个列表项的独立动画 (0.0 到 1.0)
 
     while (true) {
         if (this->isDestroy) { ThreadIo = false; cond.notify_all(); return; }
         if (this->isChage) { glViewport(0, 0, this->surfaceWidth, this->surfaceHigh); this->isChage = false; }
-        this->clearBuffers();
+        this->clearBuffers(); 
         if (!ActivityState) { usleep(16000); continue; }
-
+        
         imguiMainWinStart();
         float dt = io->DeltaTime;
 
-        // 2. 调节控制台 (放在侧边，不遮挡主 UI)
-        ImGui::SetNextWindowPos(ImVec2(50, 50), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Settings Controller");
-        ImGui::SliderFloat("Sidebar Width", &sidebarWidth, 150, 400);
-        ImGui::SliderFloat("Item Spacing", &itemSpacing, 5, 50);
-        ImGui::SliderFloat("Icon Size", &iconSize, 10, 50);
-        ImGui::SliderFloat("Text Size", &textSize, 10, 50);
-        ImGui::SliderFloat("Background Alpha", &rectAlpha, 0.1f, 1.0f);
-        ImGui::SliderFloat("Rounding", &rectRounding, 0, 50);
-        ImGui::End();
+        // 计算屏幕正中心的绝对坐标
+        float targetPosX = (surfaceWidth - targetWidth) / 2.0f;
+        float targetPosY = (surfaceHigh - targetHeight) / 2.0f;
 
-        // 3. 绘制主 UI 
-        // 计算居中位置
-        float centerX = (surfaceWidth - winW) / 2.0f;
-        float centerY = (surfaceHigh - winH) / 2.0f;
+        // 【线性过渡动画】 - 所有属性丝滑过渡
+        animWidth  += (targetWidth - animWidth)   * animSpeed * dt;
+        animHeight += (targetHeight - animHeight) * animSpeed * dt;
+        animPosX   += (targetPosX - animPosX)     * animSpeed * dt;
+        animPosY   += (targetPosY - animPosY)     * animSpeed * dt;
+        animAlpha  += (targetAlpha - animAlpha)   * animSpeed * dt;
 
-        ImGui::SetNextWindowPos(ImVec2(centerX, centerY));
-        ImGui::SetNextWindowSize(ImVec2(winW, winH));
+        // --- 外部调节菜单 ---
+        ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
+        ImGui::Begin("UI 控制器");
         
-        // 核心修正：必须保证这个主窗口能接收输入，且内部元素渲染正确
-        ImGui::Begin("MainPanel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings);
-        
-        // 【关键修复】同步窗口指针，解决点击闪退
+        // 核心修复：把当前窗口指针同步给 input，防止空指针闪退
         this->g_window = ImGui::GetCurrentWindow();
         input->g_window = this->g_window;
 
+        ImGui::Text("全局设置");
+        ImGui::SliderFloat("透明度", &targetAlpha, 0, 1.0f);
+        ImGui::SliderFloat("圆角", &targetRounding, 0, 100);
+        ImGui::SliderFloat("动画速度", &animSpeed, 1, 30);
+        
+        ImGui::Separator();
+        ImGui::Text("文本 Melt 设置");
+        ImGui::SliderFloat("Melt 大小", &textScale, 0.5f, 3.0f);
+        ImGui::SliderFloat("Melt 偏移X", &textOffsetX, -100, 200);
+        ImGui::SliderFloat("Melt 偏移Y", &textOffsetY, -100, 200);
+        ImGui::SliderFloat("辉光强度", &textGlowIntensity, 0, 20);
+        
+        ImGui::Separator();
+        ImGui::Text("列表设置");
+        ImGui::SliderFloat("列表触发宽度", &listWidth, 100, 400);
+        ImGui::SliderFloat("文本间距", &itemSpacing, 5, 50);
+        ImGui::SliderFloat("Icon 大小", &iconSize, 10, 50);
+        ImGui::SliderFloat("列表文字大小", &listItemTextSize, 10, 50);
+        ImGui::End();
+
+        // --- 主画布渲染 ---
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(surfaceWidth, surfaceHigh));
+        ImGui::Begin("Canvas", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings);
+        
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        ImVec2 p = ImVec2(centerX, centerY);
+        
+        // 获取带动画的矩形绝对坐标
+        ImVec2 rectMin = ImVec2(animPosX, animPosY);
+        ImVec2 rectMax = ImVec2(animPosX + animWidth, animPosY + animHeight);
 
-        // A. 绘制大背景 (带阴影)
-        for(int i=1; i<=15; i++) {
-            drawList->AddRect(ImVec2(p.x-i, p.y-i), ImVec2(p.x+winW+i, p.y+winH+i), IM_COL32(0,0,0, (int)(180*(1.0f-i/15.0f)*rectAlpha)), rectRounding+i);
+        // A. 完全保留：绘制背景阴影
+        for (int i = 1; i <= 10; i++) {
+            float shadowAlpha = (1.0f - (i / 10.0f)) * 0.2f * animAlpha;
+            drawList->AddRect(
+                ImVec2(rectMin.x - i * 2, rectMin.y - i * 2),
+                ImVec2(rectMax.x + i * 2, rectMax.y + i * 2),
+                IM_COL32(0, 0, 0, (int)(shadowAlpha * 255)),
+                targetRounding + i * 2, 0, 2.0f
+            );
         }
-        drawList->AddRectFilled(p, ImVec2(p.x+winW, p.y+winH), IM_COL32(15, 15, 15, (int)(255*rectAlpha)), rectRounding);
 
-        // B. 绘制左侧边栏背景
-        drawList->AddRectFilled(p, ImVec2(p.x + sidebarWidth, p.y + winH), IM_COL32(25, 25, 25, (int)(255*rectAlpha)), rectRounding, ImDrawFlags_RoundCornersLeft);
+        // B. 完全保留：绘制黑色主矩形
+        drawList->AddRectFilled(rectMin, rectMax, IM_COL32(0, 0, 0, (int)(animAlpha * 255)), targetRounding);
 
-        // C. 绘制左上方 "Melt" 文本 (带辉光)
-        ImVec2 meltPos = ImVec2(p.x + meltOffsetX, p.y + meltOffsetY);
-        for(int i=1; i<=3; i++) {
-            drawList->AddText(imFont, 40.0f, ImVec2(meltPos.x, meltPos.y), IM_COL32(255, 255, 255, (int)(50/i)), "Melt");
+        // C. 完全保留：绘制文本 "Melt" 及辉光
+        ImVec2 textPos = ImVec2(rectMin.x + textOffsetX, rectMin.y + textOffsetY);
+        float meltFontSize = 32.0f * textScale;
+        
+        if (textGlowIntensity > 0.1f) {
+            for (int i = 1; i <= 3; i++) {
+                float glowAlpha = (1.0f - (i / 3.0f)) * textGlowColor.w * animAlpha;
+                ImU32 gCol = ImGui::ColorConvertFloat4ToU32(ImVec4(textGlowColor.x, textGlowColor.y, textGlowColor.z, glowAlpha));
+                float offset = (i * textGlowIntensity) / 3.0f;
+                drawList->AddText(imFont, meltFontSize, ImVec2(textPos.x + offset, textPos.y), gCol, "Melt");
+                drawList->AddText(imFont, meltFontSize, ImVec2(textPos.x - offset, textPos.y), gCol, "Melt");
+                drawList->AddText(imFont, meltFontSize, ImVec2(textPos.x, textPos.y + offset), gCol, "Melt");
+                drawList->AddText(imFont, meltFontSize, ImVec2(textPos.x, textPos.y - offset), gCol, "Melt");
+            }
         }
-        drawList->AddText(imFont, 40.0f, meltPos, IM_COL32(255, 255, 255, 255), "Melt");
+        drawList->AddText(imFont, meltFontSize, textPos, IM_COL32(255, 255, 255, (int)(animAlpha * 255)), "Melt");
 
-        // D. 垂直列表渲染
-        float startY = p.y + 60.0f;
+        // D. 【新增】叠加你的左侧列表 (全部跟随矩形坐标动画)
+        // 从 Melt 文本正下方开始计算 Y 坐标
+        float startY = textPos.y + meltFontSize + 30.0f; 
+
         for (int i = 0; i < 8; i++) {
-            ImVec2 itemPos = ImVec2(p.x + 30.0f, startY + i * (textSize + itemSpacing));
+            ImVec2 itemPos = ImVec2(rectMin.x + 30.0f, startY + i * (listItemTextSize + itemSpacing));
             
-            // 检测交互
-            ImRect itemRect(itemPos.x, itemPos.y, p.x + sidebarWidth - 20.0f, itemPos.y + textSize + 10.0f);
-            bool isHovered = itemRect.Contains(io->MousePos);
+            // 手动判断触摸区域
+            bool isHovered = false;
+            if (io->MousePos.x >= itemPos.x && io->MousePos.x <= rectMin.x + listWidth &&
+                io->MousePos.y >= itemPos.y && io->MousePos.y <= itemPos.y + listItemTextSize + 10.0f) {
+                isHovered = true;
+            }
             bool isSelected = (selectedTab == i);
 
+            // 如果触摸并释放，更新选中项
             if (isHovered && ImGui::IsMouseClicked(0)) selectedTab = i;
 
-            // 动画目标：选中或悬停时目标为 1.0 (偏移 10px)，否则为 0.0
-            float targetAnim = (isHovered || isSelected) ? 1.0f : 0.0f;
-            itemAnims[i] += (targetAnim - itemAnims[i]) * animSpeed * dt;
+            // 列表项动画计算
+            float targetItemAnim = (isHovered || isSelected) ? 1.0f : 0.0f;
+            itemAnims[i] += (targetItemAnim - itemAnims[i]) * animSpeed * dt;
 
-            // 计算属性
+            // 根据动画进度，计算位移 (最大 10px) 和 透明度 (0.7 -> 1.0)
             float currentOffset = itemAnims[i] * 10.0f;
-            float currentAlpha = 0.7f + (itemAnims[i] * 0.3f); // 从 0.7 到 1.0
-            ImU32 col = IM_COL32(255, 255, 255, (int)(255 * currentAlpha));
+            float currentItemAlpha = 0.7f + (itemAnims[i] * 0.3f); 
+            currentItemAlpha *= animAlpha; // 结合整个大矩形的透明度
 
-            // 绘制 Icon (根据你的想法绘制简单的几何图形作为 Demo)
-            ImVec2 iconPos = ImVec2(itemPos.x + currentOffset, itemPos.y + (textSize - iconSize)/2.0f);
-            drawList->AddRectFilled(iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize), col, 5.0f); // 模拟 Icon
+            ImU32 itemCol = IM_COL32(255, 255, 255, (int)(255 * currentItemAlpha));
+
+            // 绘制左侧 Icon (暂时用简单的方块代替，位置同样加上了动画偏移)
+            ImVec2 iconPos = ImVec2(itemPos.x + currentOffset, itemPos.y + (listItemTextSize - iconSize) / 2.0f);
+            drawList->AddRectFilled(iconPos, ImVec2(iconPos.x + iconSize, iconPos.y + iconSize), itemCol, 4.0f); 
             
-            // 绘制文本
-            drawList->AddText(imFont, textSize, ImVec2(iconPos.x + iconSize + 15.0f, itemPos.y), col, tabs[i]);
-
-            // 如果是选中状态，画一个左侧提示条
-            if (isSelected) {
-                drawList->AddRectFilled(ImVec2(p.x, itemPos.y), ImVec2(p.x + 5, itemPos.y + textSize), col, 2.0f);
-            }
+            // 绘制列表文本 (位置在 Icon 右侧)
+            drawList->AddText(imFont, listItemTextSize, ImVec2(iconPos.x + iconSize + 15.0f, itemPos.y), itemCol, tabs[i]);
         }
 
         ImGui::End();
-        imguiMainWinEnd();
 
+        imguiMainWinEnd();
         if (mEglDisplay != EGL_NO_DISPLAY && mEglSurface != EGL_NO_SURFACE) { this->swapBuffers(); }
-        usleep(16000);
+        usleep(16000); 
     }
 }
 
