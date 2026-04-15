@@ -62,7 +62,7 @@ int EGL::initImgui() {
     ImFontConfig font_cfg;
     font_cfg.FontDataOwnedByAtlas = false; 
     
-    imFont = io->Fonts->AddFontFromMemoryTTF((void *) SF_UI_Display_1Thin, SF_UI_Display_1Thin_len, 32.0f, &font_cfg, io->Fonts->GetGlyphRangesChineseFull());
+    imFont = io->Fonts->AddFontFromMemoryTTF((void *) HarmonyOS_Sans_TC_Thin, HarmonyOS_Sans_TC_Thin_len, 32.0f, &font_cfg, io->Fonts->GetGlyphRangesChineseFull());
 
     g = ImGui::GetCurrentContext();
     style =&ImGui::GetStyle();
