@@ -7,7 +7,7 @@
 #include <float.h>
 #include <cmath>
 #include <algorithm>
-#include "font.h" 
+#include "Font.h" 
 
 // ---------------------------------------------------------
 // 基础 EGL 结构
