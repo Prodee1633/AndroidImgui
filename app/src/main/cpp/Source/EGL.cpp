@@ -7,8 +7,6 @@
 #include <float.h>
 #include <cmath>
 #include <algorithm>
-#include "OPPOSans-H.h" 
-
 // ---------------------------------------------------------
 // 基础 EGL 结构
 // ---------------------------------------------------------
@@ -58,12 +56,9 @@ int EGL::initImgui() {
     io->IniFilename = SaveFile.c_str();
     ImGui_ImplAndroid_Init(this->SurfaceWin);
     ImGui_ImplOpenGL3_Init("#version 300 es");
-    
     ImFontConfig font_cfg;
-    font_cfg.FontDataOwnedByAtlas = false; 
-    
-    imFont = io->Fonts->AddFontFromMemoryTTF((void *) OPPOSans_H_size, OPPOSans_H, 32.0f, &font_cfg, io->Fonts->GetGlyphRangesChineseFull());
-
+    font_cfg.FontDataOwnedByAtlas = false;
+    imFont = io->Fonts->AddFontFromMemoryTTF((void *) OPPOSans_H, OPPOSans_H_size, 32.0f, &font_cfg, io->Fonts->GetGlyphRangesChineseFull());
     g = ImGui::GetCurrentContext();
     style =&ImGui::GetStyle();
     style->ScaleAllSizes(4.0f);
