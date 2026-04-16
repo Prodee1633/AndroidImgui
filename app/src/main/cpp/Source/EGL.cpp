@@ -362,7 +362,28 @@ void EGL::EglThread() {
 
             float currentOffset = (45.0f + itemAnims[i] * 10.0f) * globalScale;
             float currentItemAlpha = 0.7f + (itemAnims[i] * 0.3f); 
-            drawList->AddText(imFont, 30.0f * globalScale, ImVec2(rectMin.x + currentOffset, itemPos.y), IM_COL32(255, 255, 255, (int)(255 * currentItemAlpha * animAlpha)), tabs[i]);
+            ImVec2 itemTextPos = ImVec2(rectMin.x + currentOffset, itemPos.y);
+
+            if (itemAnims[i] > 0.01f) {
+                ImVec2 tSize = imFont->CalcTextSizeA(30.0f * globalScale, FLT_MAX, 0.0f, tabs[i]);
+                float pX = 15.0f * globalScale;
+                float pY = 8.0f * globalScale;
+                ImVec2 bgMin = ImVec2(itemTextPos.x - pX, itemTextPos.y - pY);
+                ImVec2 bgMax = ImVec2(itemTextPos.x + tSize.x + pX, itemTextPos.y + tSize.y + pY);
+                float tabRnd = 10.0f * globalScale;
+                
+                for (int j = 1; j <= 4; j++) {
+                    drawList->AddRectFilled(
+                        ImVec2(bgMin.x - j * 2.0f * globalScale, bgMin.y - j * 2.0f * globalScale), 
+                        ImVec2(bgMax.x + j * 2.0f * globalScale, bgMax.y + j * 2.0f * globalScale), 
+                        IM_COL32(30, 100, 200, (int)(255 * animAlpha * itemAnims[i] * (0.15f - j * 0.03f))), 
+                        tabRnd + j * 2.0f * globalScale
+                    );
+                }
+                drawList->AddRectFilled(bgMin, bgMax, IM_COL32(30, 100, 200, (int)(255 * animAlpha * itemAnims[i])), tabRnd);
+            }
+
+            drawList->AddText(imFont, 30.0f * globalScale, itemTextPos, IM_COL32(255, 255, 255, (int)(255 * currentItemAlpha * animAlpha)), tabs[i]);
         }
 
         static bool isScrolling = false;
@@ -552,11 +573,14 @@ void EGL::EglThread() {
             ImGui::SetCursorScreenPos(ImVec2(rectMin.x + scaledListW + scaledPadding, contentY + scrollY));
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(mainBgColor.x, mainBgColor.y, mainBgColor.z, mainBgColor.w * animAlpha));
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * globalScale);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f * globalScale, 10.0f * globalScale));
+            ImGui::SetWindowFontScale(globalScale * 0.85f);
             ImGui::SetNextItemWidth(displayW - scaledListW - (scaledPadding * 2.0f));
             ImGui::InputTextWithHint("##Search", "点击此处输入模块名称搜索...", searchBuffer, sizeof(searchBuffer));
-            ImGui::PopStyleVar();
+            ImGui::SetWindowFontScale(1.0f);
+            ImGui::PopStyleVar(2);
             ImGui::PopStyleColor();
-            contentY += 60.0f * globalScale;
+            contentY += ImGui::GetItemRectSize().y + 20.0f * globalScale;
         } else if (selectedTab == 5) {
             auto CustomBtn = [&](const char* label) {
                 ImVec2 pos = ImGui::GetCursorScreenPos();
