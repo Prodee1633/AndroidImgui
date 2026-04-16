@@ -82,7 +82,7 @@ void EGL::onSurfaceChange(int SurfaceWidth, int SurfaceHigh) {
 
 void EGL::onSurfaceDestroy() {
     this->isDestroy = true;
-    std::uniquelock<std::mutex> ulo(Threadlk);
+    std::unique_lock<std::mutex> ulo(Threadlk);
     cond.wait(ulo, [this] { return !this->ThreadIo; });
     delete SurfaceThread;
     SurfaceThread = nullptr;
